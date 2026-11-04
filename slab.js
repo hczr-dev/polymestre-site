@@ -10,6 +10,9 @@ import * as THREE from "three";
 import { Sky } from "three/addons/objects/Sky.js";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import { mergeVertices, mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
+import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 
 const canvas = document.getElementById("slab");
 const root = document.documentElement;
@@ -66,12 +69,12 @@ let envRT = null;
 
 const sun = new THREE.DirectionalLight("#fff3e2", 3);
 sun.castShadow = true;
-sun.shadow.mapSize.set(small ? 1024 : 2048, small ? 1024 : 2048);
-Object.assign(sun.shadow.camera, { left: -34, right: 34, top: 34, bottom: -34, near: 1, far: 260 });
+sun.shadow.mapSize.set(small ? 2048 : 4096, small ? 2048 : 4096);
+Object.assign(sun.shadow.camera, { left: -62, right: 62, top: 62, bottom: -62, near: 1, far: 300 });
 sun.shadow.bias = -0.0003;
 sun.shadow.normalBias = 0.035;
 scene.add(sun, sun.target);
-const hemi = new THREE.HemisphereLight("#f3efe6", "#7d796c", 0.5);
+const hemi = new THREE.HemisphereLight("#fbf4e8", "#8a8272", 0.5);
 scene.add(hemi);
 const key = new THREE.DirectionalLight("#ffffff", 1.4);
 key.position.set(-2, 3, 4);
@@ -81,7 +84,7 @@ deviceScene.add(devFill);
 const SUN = { el: 31, az: 222 };
 {
   const d = new THREE.Vector3().setFromSphericalCoords(1, THREE.MathUtils.degToRad(90 - SUN.el), THREE.MathUtils.degToRad(SUN.az));
-  sun.position.copy(d).multiplyScalar(120);
+  sun.position.copy(d).multiplyScalar(150);
   sun.target.position.set(0, 0, 0);
 }
 
@@ -99,6 +102,7 @@ function terrainMaterial(tex, opts) {
     shader.uniforms.uFade = { value: opts.fade };
     shader.uniforms.uGain = { value: opts.gain ?? 1 };
     shader.uniforms.uWater = water;
+    shader.uniforms.uWaterModel = waterModel;
     shader.uniforms.uLake = { value: opts.lakeMask ?? null };
     shader.uniforms.uHasLake = { value: opts.lakeMask ? 1 : 0 };
     shader.uniforms.uLakeY = { value: LAKE + 0.05 };
@@ -106,7 +110,7 @@ function terrainMaterial(tex, opts) {
       .replace("#include <common>", "#include <common>\nvarying vec3 vWorld;\nvarying vec2 vUvT;")
       .replace("#include <begin_vertex>", "#include <begin_vertex>\nvWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;\nvUvT = uv;");
     shader.fragmentShader = shader.fragmentShader
-      .replace("#include <common>", "#include <common>\nvarying vec3 vWorld;\nvarying vec2 vUvT;\nuniform float uStyle;\nuniform vec3 uPaper;\nuniform vec4 uHole;\nuniform float uFade;\nuniform float uGain;\nuniform vec3 uWater;\nuniform float uLakeY;\nuniform sampler2D uLake;\nuniform float uHasLake;\nfloat gWet = 0.0;")
+      .replace("#include <common>", "#include <common>\nvarying vec3 vWorld;\nvarying vec2 vUvT;\nuniform float uStyle;\nuniform vec3 uPaper;\nuniform vec4 uHole;\nuniform float uFade;\nuniform float uGain;\nuniform vec3 uWater;\nuniform float uLakeY;\nuniform sampler2D uLake;\nuniform float uHasLake;\nuniform vec3 uWaterModel;\nfloat gWet = 0.0;")
       .replace("#include <clipping_planes_fragment>", `#include <clipping_planes_fragment>
         if (uHole.z > 0.0 && abs(vWorld.x - uHole.x) < uHole.z && abs(vWorld.z - uHole.y) < uHole.w) discard;`)
       .replace("#include <map_fragment>", `#include <map_fragment>
@@ -117,12 +121,15 @@ function terrainMaterial(tex, opts) {
         float wet = uHasLake > 0.5 ? smoothstep(0.3, 0.7, texture2D(uLake, vUvT).r) : 0.0;
         float ripple = sin(vWorld.x * 0.011 + vWorld.z * 0.004) * sin(vWorld.z * 0.013 - vWorld.x * 0.003);
         vec3 lake = uWater * (1.0 + 0.05 * ripple);
-        diffuseColor.rgb = mix(diffuseColor.rgb, lake, wet);
+        diffuseColor.rgb = mix(diffuseColor.rgb, mix(lake, uWaterModel, uStyle), wet);
         gWet = wet;
+        // Maquette : une argile claire ; la photo n'y laisse qu'une trace (routes, champs), la
+        // végétation un vert sauge très doux.
         float lum = dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114));
-        vec3 plan = mix(vec3(lum), diffuseColor.rgb, 0.55);
-        plan = mix(plan, uPaper, 0.32);
-        diffuseColor.rgb = mix(diffuseColor.rgb, plan, uStyle);
+        float green = smoothstep(0.0, 0.08, diffuseColor.g - max(diffuseColor.r, diffuseColor.b));
+        vec3 clay = uPaper * (0.9 + 0.22 * lum);
+        clay = mix(clay, uPaper * vec3(0.86, 0.93, 0.8), green * 0.7);
+        diffuseColor.rgb = mix(diffuseColor.rgb, clay, uStyle);
         if (uFade > 0.0) {
           float edge = min(min(vUvT.x, 1.0 - vUvT.x), min(vUvT.y, 1.0 - vUvT.y));
           diffuseColor.a *= smoothstep(0.0, uFade, edge);
@@ -166,6 +173,7 @@ function loadTex(url) {
 const loadBin = (url, Type) => fetch(url).then((r) => { if (!r.ok) throw new Error(url); return r.arrayBuffer(); }).then((b) => new Type(b));
 
 const water = { value: new THREE.Color("#4f6f84") };
+const waterModel = { value: new THREE.Color("#a9bfcc") };
 const plainMat = new THREE.MeshStandardMaterial({ color: "#3f5640", roughness: 1 });
 const plain = new THREE.Mesh(new THREE.CircleGeometry(125000, 96), plainMat);
 plain.rotation.x = -Math.PI / 2;
@@ -252,15 +260,11 @@ function surfaceTexture(base, seam, grain, stripes) {
   return t;
 }
 const roofTex = surfaceTexture("#f3f2ee", "rgba(160,158,150,0.35)", 10, 4);
-roofTex.repeat.set(16, 12);
+roofTex.repeat.set(8, 6);
 const floorTex = surfaceTexture("#e2dbcd", "rgba(150,140,125,0.0)", 14, 0);
 floorTex.repeat.set(24, 18);
 const concrete = carve(new THREE.MeshStandardMaterial({ color: "#f4f3ef", map: roofTex, roughness: 0.78, side: THREE.DoubleSide }));
-// Le toit et le sol des patios : la vraie photo aérienne du bâtiment (swisstopo), posée à plat.
-const roofPhoto = loader.load("geo/roof.webp", () => { shadowsDirty(); wake(); });
-roofPhoto.colorSpace = THREE.SRGBColorSpace;
-roofPhoto.anisotropy = renderer.capabilities.getMaxAnisotropy();
-const roofMat = carve(new THREE.MeshStandardMaterial({ color: "#ffffff", map: roofPhoto, roughness: 0.75 }));
+const roofMat = carve(new THREE.MeshStandardMaterial({ color: "#f6f5f1", map: roofTex, roughness: 0.8 }));
 // Coordonnées de la photo pour un point du plan (le nord en haut de l'image).
 const photoUV = (x, z) => [(x + HALF_X) / (2 * HALF_X), (z + HALF_Z) / (2 * HALF_Z)];
 const concreteDepth = carve(new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking }));
@@ -349,7 +353,7 @@ walls([
   ...edge([-HALF_X, HALF_Z], [HALF_X, HALF_Z], NX), ...edge([HALF_X, HALF_Z], [HALF_X, -HALF_Z], NZ).slice(1),
   ...edge([HALF_X, -HALF_Z], [-HALF_X, -HALF_Z], NX).slice(1), ...edge([-HALF_X, -HALF_Z], [-HALF_X, HALF_Z], NZ).slice(1),
 ]);
-const lawnMat = new THREE.MeshStandardMaterial({ color: "#ffffff", map: roofPhoto, roughness: 0.95, emissive: "#ffd39a", emissiveIntensity: 0 });
+const lawnMat = new THREE.MeshStandardMaterial({ color: "#dedad1", roughness: 0.95, emissive: "#ffd39a", emissiveIntensity: 0 });
 for (const [px, pz, rx, rz, a] of PATIOS) {
   const ring = Array.from({ length: 81 }, (_, i) => {
     const t = i / 80 * Math.PI * 2, c = Math.cos(a), s = Math.sin(a);
@@ -423,29 +427,13 @@ instanced(new RoundedBoxGeometry(0.62, 0.035, 0.3, 2, 0.01), new THREE.MeshStand
 instanced(new THREE.BoxGeometry(0.11, 0.11, 0.11), new THREE.MeshStandardMaterial({ color: "#d4573b", roughness: 0.7 }), chairs);
 instanced(new THREE.BoxGeometry(0.95, 0.2, 0.08), new THREE.MeshStandardMaterial({ color: "#d9cdb6", roughness: 0.8 }), shelves);
 instanced(new THREE.CylinderGeometry(0.028, 0.028, 1, 10), new THREE.MeshStandardMaterial({ color: "#f4f3ef", roughness: 0.6 }), columns, true);
-// Une ombre de contact douce où la dalle touche le sol.
-{
-  const c = document.createElement("canvas");
-  c.width = 512; c.height = 384;
-  const g = c.getContext("2d");
-  g.filter = "blur(18px)";
-  g.fillStyle = "rgba(0,0,0,0.55)";
-  g.fillRect(44, 44, 424, 296);
-  const t = new THREE.CanvasTexture(c);
-  const ao = new THREE.Mesh(new THREE.PlaneGeometry(HALF_X * 2 * 1.2, HALF_Z * 2 * 1.26), new THREE.MeshBasicMaterial({ map: t, transparent: true, depthWrite: false, color: "#000000", opacity: 0.5 }));
-  ao.material.alphaMap = t;
-  ao.rotation.x = -Math.PI / 2;
-  ao.position.y = 0.105;
-  ao.renderOrder = 2.5;
-  building.add(ao);
-}
 scene.add(building);
 
 // Les arbres du campus, là où la photo en montre (geo/trees.bin : x, z, sol, rayon).
 const treeGroup = new THREE.Group();
 scene.add(treeGroup);
 const crownMat = new THREE.MeshStandardMaterial({ color: "#ffffff", roughness: 0.95 });
-const trunkMat = new THREE.MeshStandardMaterial({ color: "#6f6253", roughness: 0.9 });
+const trunkMat = new THREE.MeshStandardMaterial({ color: "#cfc8bb", roughness: 0.9 });
 const treesReady = loadBin("geo/trees.bin", Float32Array).then((a) => {
   const n = a.length / 4;
   // Une couronne faite de quatre boules bosselées, comme un vrai feuillage.
@@ -473,7 +461,7 @@ const treesReady = loadBin("geo/trees.bin", Float32Array).then((a) => {
     q.setFromAxisAngle(up, rand() * 6.28);
     crowns.setMatrixAt(i, m4.compose(v3.set(x, base + r * 1.55, z), q, s3.set(r, r * (0.9 + rand() * 0.3), r)));
     trunks.setMatrixAt(i, m4.compose(v3.set(x, base + r * 0.45, z), q, s3.set(1, r * 0.9, 1)));
-    color.setHSL(0.24 + rand() * 0.06, 0.38 + rand() * 0.14, 0.16 + rand() * 0.08);
+    color.setHSL(0.25 + rand() * 0.04, 0.2 + rand() * 0.08, 0.6 + rand() * 0.08);
     crowns.setColorAt(i, color);
   }
   crowns.castShadow = trunks.castShadow = true;
@@ -643,11 +631,12 @@ function applyTheme() {
   envRT = pmrem.fromScene(skyScene);
   scene.environment = envRT.texture;
   deviceScene.environment = envRT.texture;
-  scene.environmentIntensity = dark ? 0.6 : 0.9;
+  scene.environmentIntensity = dark ? 0.45 : 0.32;
   renderer.toneMappingExposure = dark ? 0.8 : 0.62;
   scene.fog = new THREE.FogExp2(dark ? "#1b2433" : "#a8bac3", 0.00005);
   plainMat.color.set(dark ? "#10161c" : "#3f5640");
-  paper.value.set(dark ? "#20252c" : "#e3e3df");
+  paper.value.set(dark ? "#2a2f36" : "#cdc6b8");
+  waterModel.value.set(dark ? "#1c2734" : "#aac0cc");
   concrete.color.set(dark ? "#6a7079" : "#f4f3ef");
   roofMat.color.set(dark ? "#7a8088" : "#ffffff");
   massing.color.set(dark ? "#5b616a" : "#f3f2ee");
@@ -658,8 +647,8 @@ function applyTheme() {
   lawnMat.emissiveIntensity = dark ? 0.35 : 0;
   water.value.set(dark ? "#16222f" : "#4f6f84");
   sun.color.set(dark ? "#8fa8d0" : "#fff3e2");
-  sun.intensity = dark ? 1.6 : 3.2;
-  hemi.intensity = dark ? 1.1 : 0.5;
+  sun.intensity = dark ? 1.6 : 3.8;
+  hemi.intensity = dark ? 1.1 : 0.55;
   key.intensity = dark ? 1.0 : 1.4;
   shadowsDirty();
 }
@@ -760,7 +749,7 @@ function introFrame(dt) {
   camLook.copy(l).lerp(wantLook, ease(tail));
   shiftNow = shiftWant * ease(band01(u, 0.9, 1));
   liftNow = liftWant * ease(band01(u, 0.9, 1));
-  style.value = 0.3 * ease(band01(u, 0.55, 0.8));
+  style.value = ease(band01(u, 0.5, 0.78));
   const rise = Math.max(0.02, ease(band01(u, 0.4, 0.56)));
   if (Math.abs(building.scale.y - rise) > 1e-4) { building.scale.y = rise; treeGroup.scale.y = rise; shadowsDirty(); }
   devState.phone.on = ease(band01(u, 0.93, 1)) * devWant.phone.on;
@@ -806,6 +795,25 @@ function placeDevice(group, s) {
 // ==========================================================================================
 // Boucle : en mouvement, une définition réduite ; à l'arrêt, une image nette
 // ==========================================================================================
+// L'image nette à l'arrêt : avec une occlusion ambiante douce (N8AO), chargée à part pour ne
+// rien retarder ; en mouvement, un rendu simple.
+let composer = null, aoPass = null;
+import("n8ao").then(({ N8AOPass }) => {
+  composer = new EffectComposer(renderer);
+  composer.addPass(new RenderPass(scene, camera));
+  aoPass = new N8AOPass(scene, camera, innerWidth, innerHeight);
+  aoPass.configuration.aoRadius = 1.6;
+  aoPass.configuration.distanceFalloff = 0.6;
+  aoPass.configuration.intensity = 3.2;
+  aoPass.configuration.halfRes = true;
+  aoPass.configuration.gammaCorrection = false;
+  aoPass.setQualityMode(small ? "Low" : "Medium");
+  composer.addPass(aoPass);
+  composer.addPass(new OutputPass());
+  composer.setPixelRatio(DPR_HI);
+  composer.setSize(innerWidth, innerHeight);
+  wake();
+}).catch(() => {});
 const clock = new THREE.Clock();
 const introClock = new THREE.Clock(false);
 let visible = true, slowFrames = 0;
@@ -865,7 +873,8 @@ function frame() {
   setDpr(moving ? DPR_LO : DPR_HI);
   const t0 = performance.now();
   renderer.autoClear = true;
-  renderer.render(scene, camera);
+  if (composer && !moving && !(intro.active && intro.started)) composer.render();
+  else renderer.render(scene, camera);
   if (phone.visible) {
     renderer.autoClear = false;
     renderer.clearDepth();
@@ -887,6 +896,7 @@ function snap() {
 }
 function resize() {
   renderer.setSize(innerWidth, innerHeight, false);
+  composer?.setSize(innerWidth, innerHeight);
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
   measure();
@@ -935,7 +945,7 @@ if (intro.active && scrollY < 40 && !location.hash) {
   groundReady.then(() => wake()).catch(() => {});
 }
 function finishInstantly() {
-  style.value = 0.3; building.scale.y = 1; treeGroup.scale.y = 1;
+  style.value = 1; building.scale.y = 1; treeGroup.scale.y = 1;
   shadowsDirty();
   root.classList.add("intro-done");
   root.classList.remove("intro", "intro-wait");

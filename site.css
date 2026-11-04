@@ -126,62 +126,18 @@ main, .top, .foot { position: relative; z-index: 1; }
 figure { margin: 0; }
 figure { margin: 0; }
 /* Les captures en clair : seulement là où l'iPhone 3D ne suit pas le texte (téléphone, tablette). */
-/* L'app, en grand et lisible : une capture recadrée, des repères numérotés, une légende par repère. */
-.shot {
-  justify-self: center; width: min(100%, 760px);
-  background: var(--concrete); box-shadow: var(--shadow); padding: clamp(14px, 1.6vw, 22px);
-}
-.shot.phone { width: min(100%, 400px); }
-.shot.tall { width: min(100%, 460px); }
-.shot .frame { position: relative; }
-.shot img { width: 100%; height: auto; border-radius: 10px; box-shadow: 0 0 0 1px color-mix(in srgb, var(--rule) 80%, transparent); }
-.shot.phone img { border-radius: 22px; }
-.shot .frame { overflow: hidden; border-radius: 10px; }
-.shot.phone .frame { border-radius: 22px; }
-/* La zone expliquée : éclairée, le reste de la capture assombri. */
-.spot { display: none; }
-.lens {
-  position: absolute; left: var(--x); top: var(--y); width: var(--w); height: var(--h);
-  border-radius: 10px; pointer-events: none;
-  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.95), 0 0 0 200vmax rgba(14, 16, 20, 0.62);
-  transition: left 0.7s cubic-bezier(0.65, 0, 0.35, 1), top 0.7s cubic-bezier(0.65, 0, 0.35, 1),
-    width 0.7s cubic-bezier(0.65, 0, 0.35, 1), height 0.7s cubic-bezier(0.65, 0, 0.35, 1);
-}
-.notes { list-style: none; margin: 16px 2px 0; padding: 0; display: grid; gap: 2px; }
-.notes li {
-  padding: 8px 0 8px 18px; position: relative; cursor: pointer; outline: none;
-  font-size: 15.5px; line-height: 1.45; color: var(--ink-3); transition: color 0.3s ease;
-}
-.notes li::before {
-  content: ""; position: absolute; left: 2px; top: 15px; width: 6px; height: 6px; border-radius: 50%;
-  background: var(--rule); transition: background-color 0.3s ease, transform 0.3s ease;
-}
-.notes li.on { color: var(--ink); }
-.notes li.on::before { background: #ff5a1f; transform: scale(1.35); }
-.notes li:focus-visible { outline: 2px solid var(--glass-ink); outline-offset: 2px; }
-@media (prefers-reduced-motion: reduce) {
-  .lens { transition: none; }
-  .notes li { color: var(--ink-2); }
-}
-/* Une session, dans l'ordre. */
-.flow { list-style: none; counter-reset: flow; margin: 22px 0 0; padding: 0; display: grid; gap: 0; }
-.flow li {
-  counter-increment: flow; display: grid; grid-template-columns: 2.4rem 1fr; gap: 0 4px;
-  padding: 14px 0; border-top: 1px solid var(--rule); color: var(--ink-2); font-size: 16.5px; line-height: 1.55;
-}
-.flow li::before {
-  content: counter(flow); grid-row: span 2; font-weight: 700; font-stretch: 112%; font-size: 1.35rem; color: var(--ink); line-height: 1.2;
-  font-variant-numeric: tabular-nums;
-}
-.flow b { color: var(--ink); font-weight: 650; }
+/* L'app : une capture, propre, sans annotations. */
+.shot { justify-self: center; width: min(100%, 820px); margin: 0; }
+.bay.stack .shot { width: min(100%, 980px); }
+.shot.phone { width: min(100%, 340px); }
+.shot img { width: 100%; height: auto; border-radius: 14px; box-shadow: var(--shadow), 0 0 0 1px color-mix(in srgb, var(--rule) 70%, transparent); }
+.shot.phone img { border-radius: 30px; }
+.panel h2 { margin-bottom: 14px; }
+.panel p { font-size: 19px; }
 .panel h3 { font-size: clamp(1.5rem, 2.4vw, 2.1rem); line-height: 1.05; font-stretch: 108%; letter-spacing: -0.025em; margin-bottom: 16px; }
 
-/* Le chapitre du mode étude : une ouverture, puis trois étapes. */
-.chapter { min-height: 70svh; display: grid; align-items: center; padding: 16svh var(--gutter) 8svh; }
-.panel.wide { max-width: 46rem; }
-.chapter .panel h2 { font-size: clamp(2.4rem, 5vw, 4rem); line-height: 0.98; font-stretch: 112%; letter-spacing: -0.035em; }
 .bay.stack { grid-template-columns: minmax(0, 1fr); justify-items: start; gap: 24px; }
-.bay.stack .shot { width: min(100%, 1060px); justify-self: stretch; }
+.bay.stack .shot { width: min(100%, 1100px); }
 
 /* Le plan : la caméra monte au-dessus de la dalle. */
 .plan { height: 80svh; }
@@ -291,15 +247,12 @@ figure { margin: 0; }
 .intro:not(.intro-done) .intro-card { opacity: 0; }
 .intro:not(.intro-done) .intro-card.show { opacity: 1; transform: none; }
 
-/* Le chapitre du mode étude : des étapes plus courtes, le texte à gauche, l'ordinateur à droite. */
 
 /* Tant que le décor charge, le ciel seul (le canevas apparaît avec l'intro). */
 .intro-wait #slab { opacity: 0; }
 
 @media (max-width: 560px) {
-  .notes li { font-size: 14.5px; }
-  .chapter { padding-top: 12svh; }
-}
+    }
 
 @media (max-width: 560px) {
   .hero h1 { font-size: 2.55rem; line-height: 0.98; max-width: 11ch; }
