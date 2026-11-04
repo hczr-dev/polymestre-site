@@ -102,7 +102,7 @@ def heights(meta, grid, sample):
 meta = {"base": base, "unit": 6.0, "layers": {}}
 for name, src, z, n, grid, samp, q, size in [
     ("far", "eox", 11, 8, 257, coarse, 70, 2048),
-    ("mid", "swiss", 15, 6, 257, fine, 72, 1536),
+    ("mid", "swiss", 14, 8, 257, fine, 74, 2048),
     ("near", "swiss", 18, 6, 97, fine, 74, 1536),
 ]:
     img, x0, y0 = mosaic(src, z, n)

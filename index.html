@@ -26,8 +26,8 @@
 <body>
 <canvas id="slab" aria-hidden="true"></canvas>
 <div class="intro-card" aria-hidden="true">
-  <span class="coords">46,5184° N · 6,5681° E</span>
-  <span class="place">Lausanne, au bord du Léman</span>
+  <span class="coords">46,43° N · 6,52° E</span>
+  <span class="place">Le Léman, vu d'en haut</span>
 </div>
 <button class="skip" type="button" data-skip-intro>Passer l'intro</button>
 <p class="geo-credit">Images © swisstopo · Sentinel-2 cloudless 2020, EOX · relief Terrain Tiles</p>
@@ -41,7 +41,7 @@
 </header>
 
 <main>
-  <section class="hero" data-cam="0">
+  <section class="hero" data-cam="hero">
     <h1>Moodle,<br>enfin rangé.</h1>
     <p class="lede">StudyTrack est l'app qui lit tes cours EPFL et te dit, chaque matin, quoi faire&nbsp;: la vidéo à rattraper, la série à rendre, l'exercice à refaire.</p>
     <div class="get" data-get>
@@ -61,16 +61,16 @@
     <p class="fine">Gratuit, sans pub. Fait par un étudiant, pas affilié à l'EPFL.</p>
   </section>
 
-  <section class="bay" data-cam="1" id="import">
+  <section class="bay" data-cam="import" id="import">
     <div class="panel">
-      <h2>Tu te connectes une fois, et c'est tout.</h2>
+      <h2>Ton semestre se range tout seul.</h2>
       <p>Tu entres ton compte EPFL sur la page de l'EPFL, comme d'habitude. StudyTrack parcourt ensuite chacun de tes cours, sur Moodle, Botafogo, Courseware ou Ed, et range chaque vidéo, chaque série et chaque corrigé dans la bonne semaine. Ton horaire IS-Academia vient avec.</p>
       <p>Quand un prof publie une nouvelle série le soir, elle t'attend le lendemain matin. Tu n'as plus besoin de faire le tour des sites pour savoir où tu en es.</p>
     </div>
     <figure class="mobile-shot"><img src="shots/iphone-courses.webp" alt="L'écran Cours sur iPhone : quatre cours, leur avancement et ce qui est en retard." width="860" height="1870" loading="lazy"></figure>
   </section>
 
-  <section class="bay right" data-cam="2" id="heures">
+  <section class="bay right" data-cam="heures" id="heures">
     <div class="panel">
       <h2>Des heures qui comptent vraiment.</h2>
       <p>Être assis dans un auditoire, ce n'est pas forcément travailler. Alors c'est toi qui décides ce qui compte&nbsp;: les cours où tu étais vraiment, les séances d'exercices, le temps passé sur tes séries avec le chrono.</p>
@@ -79,16 +79,42 @@
     <figure class="mobile-shot wide"><img src="shots/windows-stats.webp" alt="Le bilan de la semaine : heures d'étude, répartition théorie, séries, correction, et le jour par jour." width="1600" height="1000" loading="lazy"></figure>
   </section>
 
-  <section class="bay" data-cam="3" id="etude">
+  <section class="bay chapter-open" data-cam="etude" id="etude">
     <div class="panel">
-      <h2>Un bureau calme pour avancer.</h2>
-      <p>Le mode étude ouvre la série sur l'exercice du jour, avec le cours juste à côté. Si tu bloques, Claude te donne un indice pour repartir, jamais la solution toute faite. Pas d'abonnement Claude&nbsp;? Un tuteur gratuit prend le relais.</p>
-      <p>Ta musique joue, la calculatrice trace tes fonctions, ta fiche de révision est là. Et sur ordinateur, tu peux mettre tout le reste de côté le temps de la session.</p>
+      <h2>Le mode étude.</h2>
+      <p>Quand tu t'y mets, StudyTrack ouvre un bureau en plein écran pour la session&nbsp;: la série du jour, l'exercice déjà ouvert, et un chrono qui tourne. Tu coches les sous-questions au fur et à mesure, tu notes si c'était juste, et l'exercice suivant attend juste à côté.</p>
+      <p>Sur Mac et Windows, tu peux même mettre tout le reste de côté le temps de la session.</p>
     </div>
-    <figure class="mobile-shot"><img src="shots/iphone-tutor.webp" alt="Le mode étude sur iPhone : la série 1 et un indice du tuteur pour l'exercice 1.1, sans la solution." width="860" height="1870" loading="lazy"></figure>
+    <figure class="mobile-shot wide"><img src="shots/mac-study-exercise-m.webp" alt="Le mode étude sur Mac : l'exercice 6.2 d'Analyse I, ses sous-questions et les boutons « Un indice » et « Vérifier ma copie »." width="1100" height="1010" loading="lazy"></figure>
   </section>
 
-  <section class="bay right" data-cam="4" id="groupes">
+  <section class="bay step" data-cam="claude" id="claude">
+    <div class="panel">
+      <h2>Un tuteur, pas une solution.</h2>
+      <p>Tu bloques&nbsp;? Claude lit l'énoncé avec toi et te donne un indice, puis un autre si besoin, jamais la réponse d'un coup. À la fin de la série, il compare ta copie au corrigé et note tes erreurs pour que tu refasses les bons exercices une semaine plus tard.</p>
+      <p>Il passe par ton abonnement Claude. Si tu n'en as pas, un tuteur gratuit répond à sa place.</p>
+    </div>
+    <figure class="mobile-shot wide"><img src="shots/mac-study-claude-m.webp" alt="Claude dans le mode étude : un bilan de la série, les corrections et les exercices à refaire." width="1100" height="1010" loading="lazy"></figure>
+  </section>
+
+  <section class="bay step" data-cam="calcul" id="calcul">
+    <div class="panel">
+      <h2>La calculatrice qui trace.</h2>
+      <p>Tu tapes comme sur papier&nbsp;: une fonction se trace, une équation se résout, les nombres complexes et les matrices passent sans détour. Pas besoin d'ouvrir un autre site au milieu d'un exercice.</p>
+    </div>
+    <figure class="mobile-shot wide"><img src="shots/mac-study-calc-m.webp" alt="La calculatrice du mode étude : deux fonctions tracées et leurs zéros." width="1100" height="1010" loading="lazy"></figure>
+  </section>
+
+  <section class="bay step" data-cam="cours" id="cours">
+    <div class="panel">
+      <h2>Le cours de la semaine, à portée.</h2>
+      <p>Les vidéos à regarder, la théorie, la série et ta copie, rangées pour la semaine où tu en es. Ta musique joue dans le même bureau, Apple Music ou Spotify, et se met en pause avec toi.</p>
+      <p>Le même mode étude existe sur iPhone, pour réviser n'importe où.</p>
+    </div>
+    <figure class="mobile-shot wide"><img src="shots/mac-study-revision-m.webp" alt="Le cours de la semaine 8 dans le mode étude : vidéos à regarder et série 3." width="1100" height="1010" loading="lazy"></figure>
+  </section>
+
+  <section class="bay right" data-cam="groupes" id="groupes">
     <div class="panel">
       <h2>Réviser à plusieurs, même chacun chez soi.</h2>
       <p>Crée un groupe avec tes amis de section. Vous voyez qui travaille en ce moment et où chacun en est dans les séries. Une question sur un exercice part chiffrée&nbsp;: seuls les membres du groupe peuvent la lire.</p>
@@ -97,7 +123,7 @@
     <figure class="mobile-shot"><img src="shots/iphone-groups.webp" alt="L'avancement des séries dans un groupe : qui a terminé la série 1 d'Algorithms I." width="860" height="1870" loading="lazy"></figure>
   </section>
 
-  <section class="bay" data-cam="5" id="partout">
+  <section class="bay" data-cam="partout" id="partout">
     <div class="panel">
       <h2>Sur ton téléphone comme sur ton ordi.</h2>
       <p>StudyTrack existe sur iPhone, Mac et Windows, et tes données te suivent de l'un à l'autre. La synchronisation est chiffrée sur tes appareils&nbsp;: même nous ne pouvons pas la lire.</p>
@@ -106,7 +132,7 @@
     <figure class="mobile-shot wide"><img src="shots/windows-today.webp" alt="L'écran Aujourd'hui sur Windows : le prochain geste, la semaine 8, l'horaire et les sessions du jour." width="1600" height="1000" loading="lazy"></figure>
   </section>
 
-  <section class="plan" data-cam="6" aria-hidden="true"></section>
+  <section class="plan" data-cam="plan" aria-hidden="true"></section>
 
   <section class="download" id="telecharger" data-covers-slab>
     <h2>Télécharger StudyTrack</h2>

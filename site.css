@@ -49,6 +49,7 @@ p { text-wrap: pretty; }
 /* La dalle : derrière tout, plein écran. */
 #slab {
   position: fixed; inset: 0; width: 100%; height: 100%; display: block; z-index: 0;
+  transition: opacity 1.2s ease;
   background: linear-gradient(180deg, #8eacc2 0%, #a8bac3 48%, #a8bac3 100%);
 }
 @media (prefers-color-scheme: dark) {
@@ -201,6 +202,7 @@ figure { margin: 0; }
 }
 .intro:not(.intro-done) .intro-card, .intro:not(.intro-done) .skip, .intro:not(.intro-done) .geo-credit { opacity: 1; pointer-events: auto; }
 .intro-card {
+  transform: translateY(8px); transition: opacity 0.6s ease, transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
   left: var(--gutter); bottom: clamp(32px, 8vh, 80px); display: grid; gap: 6px; color: #f4f2ec;
   text-shadow: 0 1px 12px rgba(0, 0, 0, 0.45);
 }
@@ -232,3 +234,14 @@ figure { margin: 0; }
 @media (max-width: 760px) {
   .skip { top: 16px; bottom: auto; }
 }
+
+/* Les légendes de l'intro apparaissent l'une après l'autre. */
+.intro:not(.intro-done) .intro-card { opacity: 0; }
+.intro:not(.intro-done) .intro-card.show { opacity: 1; transform: none; }
+
+/* Le chapitre du mode étude : des étapes plus courtes, le texte à gauche, l'ordinateur à droite. */
+.bay.step { min-height: 92svh; }
+.bay.chapter-open .panel h2 { font-size: clamp(2.2rem, 4.4vw, 3.6rem); }
+
+/* Tant que le décor charge, le ciel seul (le canevas apparaît avec l'intro). */
+.intro-wait #slab { opacity: 0; }
