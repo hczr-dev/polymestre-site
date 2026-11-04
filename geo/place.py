@@ -8,8 +8,8 @@
 # Usage : place.py <bld.npz> <veg.npz> <geo> <osm.json> <comps.json>
 import json, math, sys
 import numpy as np
-import DracoPy, mapbox_earcut
-from PIL import Image, ImageDraw
+import DracoPy, mapbox_earcut, contourpy
+from PIL import Image, ImageDraw, ImageFilter
 BLD, VEG, GEO, OSM, COMPS = sys.argv[1:6]
 meta = json.load(open(f"{GEO}/meta.json"))
 UNIT, EXAG, BASE_M = meta["unit"], 1.3, meta["base"]
@@ -152,6 +152,59 @@ top = np.full(col.max() + 1, -1e9); np.maximum.at(top, col, corners[:, 1])
 owner = np.repeat(owner_v[T[:, 0]][ok], 3)
 base = np.full(owner.max() + 1, 1e9); np.minimum.at(base, owner, corners[:, 1])
 uv = np.c_[top[col], base[owner]]
+# Le Rolex : son toit seul reste dans le maillage. Ses bords donnent les contours exacts (le
+# pourtour et les patios), d'où seront construits le verre, la dalle et le plancher.
+tri_c = corners.reshape(-1, 3, 3); cen = tri_c.mean(1)
+inside = (np.abs(cen[:, 0]) < 14.2) & (np.abs(cen[:, 2]) < 10.45)
+ny = np.abs(unit[:, 1])
+crown = top[col].reshape(-1, 3).max(1) - tri_c[:, :, 1].max(1) < 0.08
+roof = inside & (ny > 0.35) & crown
+rt = tri_c[roof]
+# Le contour : le toit tramé finement, lissé d'un rien, tracé ; chaque point prend sa hauteur exacte.
+PX = 0.04; X0, Z0 = -14.6, -10.9; NW, NH = int(29.2 / PX), int(21.8 / PX)
+ras = Image.new("L", (NW, NH), 0); dr2 = ImageDraw.Draw(ras)
+for t in rt:
+    dr2.polygon([((p[0] - X0) / PX, (p[2] - Z0) / PX) for p in t], fill=255)
+ras = np.asarray(ras.filter(ImageFilter.GaussianBlur(2.2))).astype(float) / 255
+gen = contourpy.contour_generator(x=X0 + np.arange(NW) * PX, y=Z0 + np.arange(NH) * PX, z=ras)
+def height(px_, pz_):
+    A_, B_, C_ = rt[:, 0], rt[:, 1], rt[:, 2]
+    d = (B_[:, 2] - C_[:, 2]) * (A_[:, 0] - C_[:, 0]) + (C_[:, 0] - B_[:, 0]) * (A_[:, 2] - C_[:, 2])
+    d = np.where(np.abs(d) < 1e-12, 1e-12, d)
+    w0 = ((B_[:, 2] - C_[:, 2]) * (px_ - C_[:, 0]) + (C_[:, 0] - B_[:, 0]) * (pz_ - C_[:, 2])) / d
+    w1 = ((C_[:, 2] - A_[:, 2]) * (px_ - C_[:, 0]) + (A_[:, 0] - C_[:, 0]) * (pz_ - C_[:, 2])) / d
+    w2 = 1 - w0 - w1
+    m = (w0 > -1e-3) & (w1 > -1e-3) & (w2 > -1e-3)
+    if m.any():
+        i = np.flatnonzero(m)[0]
+        return w0[i] * A_[i, 1] + w1[i] * B_[i, 1] + w2[i] * C_[i, 1]
+    c = rt.mean(1); i = np.argmin(np.hypot(c[:, 0] - px_, c[:, 2] - pz_))
+    return rt[i, :, 1].mean()
+loops = []
+for l in gen.lines(0.5):
+    if len(l) < 20: continue
+    if np.hypot(*(l[0] - l[-1])) > 1e-6: continue
+    # Un point tous les ~20 cm de scène, dans le sens de la longueur.
+    seg = np.hypot(*np.diff(l, axis=0).T); arc = np.r_[0, np.cumsum(seg)]
+    n_ = max(12, int(arc[-1] / 0.2))
+    t_ = np.linspace(0, arc[-1], n_, endpoint=False)
+    x_, z_ = np.interp(t_, arc, l[:, 0]), np.interp(t_, arc, l[:, 1])
+    cx_, cz_ = x_.mean(), z_.mean()
+    y_ = np.array([height(a_ + (cx_ - a_) * 0, b_) for a_, b_ in zip(x_, z_)])
+    y_ = np.convolve(np.r_[y_[-3:], y_, y_[:3]], np.ones(7) / 7, "valid")
+    loops.append(np.c_[x_, y_, z_])
+area = lambda l: 0.5 * np.sum(l[:, 0] * np.roll(l[:, 2], -1) - np.roll(l[:, 0], -1) * l[:, 2])
+loops = [l for l in loops if abs(area(l)) > 0.25]
+loops.sort(key=lambda l: -abs(area(l)))
+# Le premier est le pourtour : tous les contours sont orientés pour que l'extérieur soit à droite.
+loops = [l if (area(l) > 0) == (i == 0) else l[::-1] for i, l in enumerate(loops)]
+print("Rolex : toit", len(rt), "triangles,", len(loops), "contours", [round(abs(area(l))) for l in loops])
+out_f = [float(len(loops))]
+for l in loops: out_f += [float(len(l))] + l.ravel().tolist()
+out_f += [float(len(rt))] + rt.ravel().tolist()
+np.array(out_f, dtype="<f4").tofile(f"{GEO}/rolex.bin")
+keep = ~(inside & ~roof)
+corners = tri_c[keep].reshape(-1, 3); normals = normals.reshape(-1, 3, 3)[keep].reshape(-1, 3); uv = uv.reshape(-1, 3, 2)[keep].reshape(-1, 2)
 faces = np.arange(len(corners), dtype=np.uint32).reshape(-1, 3)
 blob = DracoPy.encode(corners.astype(np.float32), faces, quantization_bits=16, compression_level=8,
                       normals=normals, normal_quantization_bits=12, tex_coord=uv, tex_coord_quantization_bits=14)
@@ -160,6 +213,7 @@ print("campus.drc", len(blob) // 1024, "Ko,", len(corners), "sommets,", len(face
 
 # Un enregistrement par bâtiment, pour les façades.
 recs = []
+owner = owner.reshape(-1, 3)[keep].ravel()
 for b in np.unique(owner):
     m = owner == b; p = corners[m]
     cx, cz = float((p[:, 0].min() + p[:, 0].max()) / 2), float((p[:, 2].min() + p[:, 2].max()) / 2)

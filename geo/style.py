@@ -2,6 +2,7 @@
 # son nom dans OpenStreetMap. 1024² sur ±110 unités ; rouge = numéro de famille. Sortie : styles.png.
 # 0 divers · 1 Rolex · 2 aluminium clair à bandeaux · 3 ocre EL/IN · 4 volets inclinés (ME D) · 5 BI
 # 6 BM · 7 mur-rideau · 8 métal sombre · 9 boîtes RTS · 10 dalle RTS · 11 bois (ArtLab)
+# 12 aluminium à étage rouge (ME, MA, CM, CE, PH) · 13 MX · 14 CH
 import json, math, re, sys
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
@@ -11,7 +12,7 @@ R, S = 110.0, 1024
 def sm(la, lo):
     return ((lo + 180) / 360 * N - GX) * M19 / UNIT, (GY - (1 - math.asinh(math.tan(math.radians(la))) / math.pi) / 2 * N) * M19 / UNIT
 px = lambda p: ((p[0] + R) / (2 * R) * S, (R - p[1]) / (2 * R) * S)
-RULES = [(r"^ME D", 4), (r"^BI$", 5), (r"^BM$", 6), (r"^BC$", 8), (r"^PAVILION", 11), (r"SwissTech|Starling", 7), (r"^RTS - ", 9), (r"^RTS \(", 10),
+RULES = [(r"^(CH|BCH)\b", 14), (r"^MX[A-Z]?\b", 13), (r"^(ME [ABC]|MA [ABC]|CM|CE|PH [A-Z])\b", 12), (r"^ME D", 4), (r"^BI$", 5), (r"^BM$", 6), (r"^BC$", 8), (r"^PAVILION", 11), (r"SwissTech|Starling", 7), (r"^RTS - ", 9), (r"^RTS \(", 10),
          (r"^(EL[A-Z]|IN[A-Z]|DIA|DLLEL|ODY)\b", 3), (r"^(ME|MA|CM|CE|CO|PH|GC|GR|CH|BS|AA[A-Z]|SG|SV|MX[A-Z]|PO|PPH|PPB|PSE|TCV|STT|STF|GA)\b", 2)]
 o = json.load(open(OSM)); els = o["elements"] if isinstance(o, dict) else o
 img = Image.new("L", (S, S), 0); d = ImageDraw.Draw(img); count = {}

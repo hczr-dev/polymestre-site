@@ -67,45 +67,8 @@ for a_, off, (u0, u1, lo, hi) in out:
     x1, z1 = np.cos(a_ * np.radians(2)) * off + tx * u1, np.sin(a_ * np.radians(2)) * off + tz * u1
     rows.append((x0, z0, x1, z1, lo, hi, nx, nz, s))
 A = np.array(rows, dtype="<f4"); A.tofile(f"{GEO}/walls.bin")
-# Le Rolex : un montant tous les 2,40 m, à la hauteur exacte du toit à cet endroit.
-def top_at(ts, us, u):
-    best = -1e9
-    for t, q in zip(ts, us):
-        if not (min(q) - 1e-3 <= u <= max(q) + 1e-3): continue
-        for i in range(3):
-            a0, a1 = q[i], q[(i + 1) % 3]
-            if a0 == a1: best = max(best, t[i][1], t[(i + 1) % 3][1]); continue
-            f = (u - a0) / (a1 - a0)
-            if -1e-3 <= f <= 1 + 1e-3: best = max(best, t[i][1] + f * (t[(i + 1) % 3][1] - t[i][1]))
-    return best
-mull = []
-STEP = 2.4 / 6
-pid = 0
-for (a_, o), ts in planes.items():
-    nx0, nz0 = np.cos(a_ * np.radians(2)), np.sin(a_ * np.radians(2)); tx, tz = -nz0, nx0; off = o * 0.05
-    us = [[p[0] * tx + p[2] * tz for p in t] for t in ts]
-    lo_u, hi_u = min(map(min, us)), max(map(max, us))
-    c = (lo_u + hi_u) / 2
-    if style(nx0 * off + tx * c, nz0 * off + tz * c) != 1 and style(nx0 * off + tx * c + nx0 * .3, nz0 * off + tz * c + nz0 * .3) != 1: continue
-    n_ = max(1, int(round((hi_u - lo_u) / STEP)))
-    pid += 1
-    for k in range(n_ + 1):
-        u = lo_u + (hi_u - lo_u) * k / n_
-        x_, z_ = nx0 * off + tx * u, nz0 * off + tz * u
-        t_ = top_at(ts, us, u)
-        if t_ < -1e8: continue
-        e = 0.25
-        p_, q_ = solid(x_ + nx0 * e, z_ + nz0 * e, t_ - 0.3), solid(x_ - nx0 * e, z_ - nz0 * e, t_ - 0.3)
-        if p_ == q_: continue
-        sgn = -1 if p_ else 1
-        mull.append((x_, z_, t_, nx0 * sgn, nz0 * sgn, pid * 4096 + k))
-# Un mur coupé en deux par swisstopo donne une rangée trop basse : seul le haut compte.
-Q = np.array(mull, dtype=float)
-near = np.hypot(Q[:, None, 0] - Q[None, :, 0], Q[:, None, 1] - Q[None, :, 1]) < 0.26
-Q = Q[~(near & (Q[None, :, 2] > Q[:, None, 2] + 0.2)).any(1)]
-M_ = Q.astype("<f4"); M_.tofile(f"{GEO}/mullions.bin"); print("montants", len(M_), "plans", pid)
 L = np.hypot(A[:, 2] - A[:, 0], A[:, 3] - A[:, 1]) * 6; H = (A[:, 5] - A[:, 4]) * 6
 print("murs", len(A), "Ko", A.nbytes // 1024)
-for s in np.unique(A[:, 8]):
-    k = A[:, 8] == s
-    print("famille", int(s), "murs", k.sum(), "longueur m", int(L[k].sum()), "surface m²", int((L[k] * H[k]).sum()), "travées 3.6x3.6", int((L[k] * H[k]).sum() / 13))
+for s_ in np.unique(A[:, 8]):
+    k = A[:, 8] == s_
+    print("famille", int(s_), "murs", k.sum(), "surface m²", int((L[k] * H[k]).sum()))

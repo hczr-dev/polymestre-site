@@ -23,21 +23,24 @@ const darkQuery = matchMedia("(prefers-color-scheme: dark)");
 
 let renderer;
 try {
-  renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: "high-performance" });
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: devicePixelRatio < 1.5, alpha: false, powerPreference: "high-performance" });
 } catch {
   root.classList.add("no-webgl", "intro-done");
   throw new Error("WebGL indisponible");
 }
 const DPR_HI = Math.min(devicePixelRatio, 2);
-let DPR_LO = Math.min(devicePixelRatio, small ? 1 : 1.25);
+// Le canevas garde une taille fixe : le réallouer à chaque arrêt coûte plus que dessiner. En mouvement,
+// la scène passe par une image plus petite, agrandie à l'écran (voir fast) ; l'iPhone reste net.
 let dprNow = DPR_HI;
+let dprFast = Math.min(devicePixelRatio, small ? 1 : 1.35);
 renderer.setPixelRatio(dprNow);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.shadowMap.autoUpdate = false;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
-const shadowsDirty = () => { renderer.shadowMap.needsUpdate = true; };
+let stale = true;                                    // l'image affichée n'est plus à jour
+const shadowsDirty = () => { renderer.shadowMap.needsUpdate = true; stale = true; };
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(32, 1, 0.05, 400000);
@@ -137,8 +140,8 @@ function terrainMaterial(tex, opts) {
 }
 function terrainMesh(layer, heights, tex, opts) {
   const size = layer.size / UNIT, g = layer.grid;
-  // Sur téléphone, un sommet sur deux suffit pour le relief fin.
-  const stride = small && g > 400 ? 2 : 1;
+  // Le relief fin : un sommet sur deux suffit sous la photo (un quart des triangles).
+  const stride = g > 400 ? 2 : 1;
   const geo = new THREE.PlaneGeometry(size, size, (g - 1) / stride, (g - 1) / stride);
   geo.rotateX(-Math.PI / 2);
   const p = geo.attributes.position, uv = geo.attributes.uv;
@@ -161,13 +164,26 @@ function terrainMesh(layer, heights, tex, opts) {
   mesh.renderOrder = opts.order ?? 0;
   return mesh;
 }
+// Les grandes images se décodent hors du fil principal quand le navigateur sait les retourner.
+const safari = /Version\/(\d+).*Safari/.exec(navigator.userAgent);
+const offThread = typeof createImageBitmap === "function" && (!safari || +safari[1] >= 17);
 const loader = new THREE.TextureLoader();
+const bitmaps = new THREE.ImageBitmapLoader().setOptions({ imageOrientation: "flipY", premultiplyAlpha: "none", colorSpaceConversion: "none" });
 function loadTex(url) {
-  return new Promise((resolve, reject) => loader.load(url, (t) => {
+  const ready = (t) => {
     t.colorSpace = THREE.SRGBColorSpace;
     t.anisotropy = renderer.capabilities.getMaxAnisotropy();
-    resolve(t);
-  }, undefined, reject));
+    return t;
+  };
+  return new Promise((resolve, reject) => {
+    if (!offThread) return loader.load(url, (t) => resolve(ready(t)), undefined, reject);
+    bitmaps.load(url, (image) => {
+      const t = new THREE.Texture(image);
+      t.flipY = false;
+      t.needsUpdate = true;
+      resolve(ready(t));
+    }, undefined, reject);
+  });
 }
 const loadBin = (url, Type) => fetch(url).then((r) => { if (!r.ok) throw new Error(url); return r.arrayBuffer(); }).then((b) => new Type(b));
 
@@ -240,11 +256,9 @@ campusMat.onBeforeCompile = (shader) => {
       vec3 top = hi ? texture2D(uHi, hu).rgb : texture2D(uNear, (vLocal.xz - uNearBox.xy) / uNearBox.z + 0.5).rgb;
       vec3 wall;
       if (st == 1.0) {
-        // Le Rolex : la membrane claire de la photo, sans les ombres que la photo a figées. Puis sa
-        // coupe : une rive mince, du verre sur toute la hauteur et de fins montants sombres, la
-        // dalle de béton, le vide sous les arches.
+        // Le Rolex : la membrane claire de la photo, sans les ombres que la photo a figées.
         top = max(top, uRoof * 0.93);
-        wall = vec3(0.09, 0.09, 0.095);
+        wall = uRoof;
       } else {
         // Chaque famille de façade, relevée sur des photos du campus : matière, hauteur d'étage,
         // largeur de travée, hauteur et largeur des vitrages, stores, part de verre vue de loin.
@@ -257,7 +271,7 @@ campusMat.onBeforeCompile = (shader) => {
           float curtain = step(kind, 0.16), ribbon = step(0.16, kind) * step(kind, 0.6);
           cw = mix(0.42, 0.28, curtain); rowA = mix(0.3, 0.16, curtain); rowB = mix(0.82, 0.96, curtain);
           fill = mix(0.7, 0.95, max(curtain, ribbon)); cover = mix(mix(0.2, 0.34, ribbon), 0.62, curtain);
-        } else if (st == 2.0) {      // ME, MA, CM, PH, GC… : aluminium clair, bandeaux vitrés continus
+        } else if (st == 2.0 || st >= 12.0) {      // ME, MA, CM, PH, GC… : aluminium clair, bandeaux vitrés continus
           skin = vec3(0.5, 0.52, 0.54) * dim; fh = 0.62; cw = 0.24; rowA = 0.44; rowB = 0.93; fill = 0.95; ribs = 1.0; blinds = 0.2; cover = 0.42; weather = 0.45;
           pane0 = vec3(0.06, 0.1, 0.14); pane1 = vec3(0.16, 0.24, 0.3);
         } else if (st == 3.0) {      // ELA…, INF… : le même dessin en ocre
@@ -366,6 +380,13 @@ const buildingsReady = new Promise((resolve, reject) => draco.load("geo/campus.d
   styleMap.value = styles;
   const mesh = new THREE.Mesh(geo, campusMat);
   mesh.castShadow = mesh.receiveShadow = true;
+  // Le toit du Rolex est une coque ondulée : dans la carte d'ombres il passe un peu plus bas, pour ne
+  // pas s'ombrer lui-même (des rayures), tout en ombrant le sol et les patios.
+  mesh.customDepthMaterial = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, side: THREE.DoubleSide });
+  mesh.customDepthMaterial.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader.replace("#include <begin_vertex>", `#include <begin_vertex>
+      if (abs(position.x) < 14.2 && abs(position.z) < 10.45) transformed.y -= 0.3;`);
+  };
   campus.add(mesh);
   draco.dispose();
   shadowsDirty();
@@ -412,8 +433,8 @@ const LOBES = [[0, 0.12, 0, 0.72], [0.46, -0.08, 0.16, 0.52], [-0.42, -0.04, 0.3
 const treesReady = loadBin("geo/trees.bin", Float32Array).then((a) => {
   const n = a.length / 4;
   const tiers = [
-    { within: 46, geo: crownGeometry(small ? 1 : 2, LOBES), list: [] },
-    { within: 80, geo: crownGeometry(1, LOBES), list: [] },
+    { within: 30, geo: crownGeometry(small ? 1 : 2, LOBES), list: [] },
+    { within: 80, geo: crownGeometry(1, LOBES.slice(0, 5)), list: [] },
     { within: Infinity, geo: crownGeometry(1, [[0, 0, 0, 0.98]]), list: [] },
   ];
   for (let i = 0; i < n; i++) tiers.find((t) => Math.hypot(a[i * 4], a[i * 4 + 1]) < t.within).list.push(i);
@@ -483,7 +504,7 @@ class Module {
     return this.paint(g, color, kind);
   }
   // Un rectangle aux coins arrondis, plein ou percé, extrudé avec un chanfrein : les tôles embouties.
-  pillow(x0, y0, x1, y1, r, z, depth, color, kind, hole, bevel = 0.03, curve = 3) {
+  pillow(x0, y0, x1, y1, r, z, depth, color, kind, hole, bevel = 0.03, curve = 2) {
     const rounded = (path, a, b, c, d, q) => {
       path.moveTo(a + q, b); path.lineTo(c - q, b); path.quadraticCurveTo(c, b, c, b + q);
       path.lineTo(c, d - q); path.quadraticCurveTo(c, d, c - q, d); path.lineTo(a + q, d);
@@ -492,7 +513,7 @@ class Module {
     };
     const shape = rounded(new THREE.Shape(), x0, y0, x1, y1, r);
     if (hole) shape.holes.push(rounded(new THREE.Path(), hole[0], hole[1], hole[2], hole[3], hole[4]));
-    const g = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: bevel > 0, bevelThickness: bevel, bevelSize: bevel, bevelOffset: -bevel, bevelSegments: 2, curveSegments: curve });
+    const g = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: bevel > 0, bevelThickness: bevel, bevelSize: bevel, bevelOffset: -bevel, bevelSegments: 1, curveSegments: curve });
     g.translate(0, 0, z);
     return this.paint(g, color, kind);
   }
@@ -500,6 +521,14 @@ class Module {
     const merge = (list) => {
       if (!list.length) return null;
       const g = mergeGeometries(list);
+      // Rien de ce qui regarde le mur ne se voit : un tiers des triangles en moins.
+      const nrm = g.attributes.normal, keep = [];
+      for (let t = 0; t < nrm.count; t += 3) if (nrm.getZ(t) + nrm.getZ(t + 1) + nrm.getZ(t + 2) > -1.5) keep.push(t);
+      for (const name of Object.keys(g.attributes)) {
+        const at = g.attributes[name], w = at.itemSize, out = new Float32Array(keep.length * 3 * w);
+        keep.forEach((t, i) => out.set(at.array.subarray(t * w, (t + 3) * w), i * 3 * w));
+        g.setAttribute(name, new THREE.BufferAttribute(out, w));
+      }
       g.scale(M, M, M);
       return g;
     };
@@ -607,6 +636,30 @@ function warren() {
   m.pane(0, 0.5, 6, 8.5, 0.06);
   return m.done();
 }
+function redTop() {
+  // Le dernier étage des blocs ME, MA, CM : ossature d'acier rouge, vitrage toute hauteur, grand
+  // auvent noir porté par des bracons.
+  const m = new Module(), RED = "#b4371f", BLK = "#15161a";
+  m.box(0, 0, 0, 7.2, 0.5, 0.34, ALU);
+  for (const x of [0.5, 2.55, 4.6, 6.65]) { m.box(x - 0.09, 0.5, 0.02, x + 0.09, 3.3, 0.2, RED); m.box(x - 0.05, 3.15, 0.2, x + 0.05, 3.25, 1.5, RED, PLAIN, 0.34); }
+  for (const x of [1.53, 3.57, 5.62]) m.box(x - 0.03, 0.5, 0.02, x + 0.03, 3.3, 0.08, "#2b2d30");
+  m.box(0, 3.3, 0, 7.2, 3.5, 2.1, BLK);
+  m.box(0, 3.22, 1.95, 7.2, 3.3, 2.1, BLK);
+  m.pane(0, 0.5, 7.2, 3.3, 0.03);
+  return m.done();
+}
+function mxBay() {
+  // MX, 3,60 × 3,60 m : piliers de béton clair, grille de vitrage blanche, allège à lames.
+  const m = new Module(), PIER = "#c9c5bb", LAME = "#9fa4a6";
+  m.box(0, 0, 0, 0.42, 3.6, 0.42, PIER, RENDER);
+  m.box(0.42, 0, 0, 3.6, 0.14, 0.2, PIER, RENDER);
+  for (let y = 0.2; y < 1.05; y += 0.1) m.box(0.42, y, 0.05, 3.6, y + 0.07, 0.09, LAME, PLAIN, 0.5);
+  m.box(0.42, 1.06, 0.02, 3.6, 1.14, 0.1, WHITE); m.box(0.42, 3.52, 0.02, 3.6, 3.6, 0.1, WHITE);
+  for (const y of [1.9, 2.72]) m.box(0.42, y - 0.025, 0.02, 3.6, y + 0.025, 0.09, WHITE);
+  for (const x of [1.48, 2.54]) m.box(x - 0.025, 1.14, 0.02, x + 0.025, 3.52, 0.09, WHITE);
+  m.pane(0.42, 1.14, 3.6, 3.52, 0.03);
+  return m.done();
+}
 function shutter() { const m = new Module(); m.box(0, 0, 0, 1, 1, 0.07, "#b8bcc0", LOUVRE); return m.done(); }
 function ribbed() { const m = new Module(); m.box(0, 0, 0, 1, 1, 0.05, "#ffffff", RIB); return m.done(); }
 function mullion() { const m = new Module(); m.box(-0.035, 0, 0, 0.035, 1, 0.16, "#15171a"); return m.done(); }
@@ -689,20 +742,39 @@ glassMat.onBeforeCompile = (shader) => {
       diffuseColor.rgb *= 0.8 + 0.5 * fract(sin(vId * 33.1) * 437.5);`);
 };
 
-// Le verre du Rolex : sombre, on devine la lumière de l'intérieur ; de nuit, il est tout allumé.
-const rolexGlassMat = new THREE.MeshStandardMaterial({ color: "#26343b", roughness: 0.06, metalness: 0.55 });
+// Le verre du Rolex : un reflet, et derrière lui l'intérieur (plafond à bandes lumineuses, sol), tracé
+// dans le shader à partir du regard. Rien à modéliser, mais la perspective est juste.
+const eye = { value: new THREE.Vector3() };
+const rolexGlassMat = new THREE.MeshStandardMaterial({ color: "#1b2429", roughness: 0.06, metalness: 0.5, side: THREE.DoubleSide });
 rolexGlassMat.onBeforeCompile = (shader) => {
   shader.uniforms.uNight = night;
+  shader.uniforms.uEye = eye;
+  shader.vertexShader = shader.vertexShader
+    .replace("#include <common>", "#include <common>\nattribute float aCeil;\nvarying float vCeil;\nvarying vec3 vIn;")
+    .replace("#include <begin_vertex>", "#include <begin_vertex>\nvCeil = aCeil;\nvIn = position;");
   shader.fragmentShader = shader.fragmentShader
-    .replace("#include <common>", "#include <common>\nuniform float uNight;")
-    .replace("#include <emissivemap_fragment>", "#include <emissivemap_fragment>\ntotalEmissiveRadiance += vec3(1.0, 0.76, 0.5) * mix(0.012, 1.1, uNight);");
+    .replace("#include <common>", "#include <common>\nuniform float uNight;\nuniform vec3 uEye;\nvarying float vCeil;\nvarying vec3 vIn;")
+    .replace("#include <emissivemap_fragment>", `#include <emissivemap_fragment>
+      vec3 ray = normalize(vIn - uEye);
+      float up = ray.y > 0.0 ? 1.0 : 0.0;
+      float plane = mix(vCeil - 0.6, vCeil - 0.05, up);
+      float t = abs(plane - vIn.y) / max(abs(ray.y), 0.004);
+      vec3 hit = vIn + ray * t;
+      float strip = smoothstep(0.42, 0.5, abs(fract(hit.x / 0.9) - 0.5)) * up;
+      vec3 room = mix(vec3(0.34, 0.33, 0.31), vec3(0.72, 0.71, 0.68), up) + strip * 1.2;
+      room *= exp(-t * 0.22);
+      float facing = abs(dot(normalize(vViewPosition), normal));
+      float see = (1.0 - pow(1.0 - facing, 3.0));
+      totalEmissiveRadiance += room * see * mix(0.16, 0.95, uNight) * vec3(1.0, 0.9, 0.76);`);
 };
-const FASCIA = 0.05, GLASS_END = 0.6, SLAB = 0.12;   // la coupe du Rolex, sous le toit (unités)
+const FASCIA = 0.05, GLASS_END = 0.6, SLAB = 0.12, RECESS = 0.04;   // la coupe du Rolex, sous le toit (unités)
 const facadeGroup = new THREE.Group();
 facadeGroup.visible = false;
 campus.add(facadeGroup);
-const facadesReady = Promise.all([loadBin("geo/walls.bin", Float32Array), loadBin("geo/mullions.bin", Float32Array)]).then(([a, posts]) => {
-  const HI = small ? 0 : 62, LO = small ? 95 : Infinity;
+const rolexParts = new THREE.Group();
+campus.add(rolexParts);
+const facadesReady = Promise.all([loadBin("geo/walls.bin", Float32Array), loadBin("geo/rolex.bin", Float32Array)]).then(([a, rolex]) => {
+  const HI = small ? 0 : 44, LO = small ? 95 : 135;
   const place = new THREE.Matrix4(), scaleM = new THREE.Matrix4(), turn = new THREE.Matrix4();
   const lists = new Map();                            // clé → { kit, matrices, colors }
   const push = (key, kit, m, color) => {
@@ -712,9 +784,9 @@ const facadesReady = Promise.all([loadBin("geo/walls.bin", Float32Array), loadBi
   };
   const kits = {
     aluHi: aluminium(true), aluLo: aluminium(false), tile: ceramic(), bmA: panelled(true), bmB: panelled(false), rts: rtsBox(),
-    swiss: curtain(1.8, 3.6, "#0a0c0f", 0.09), bc: darkMetal(), wood: timber(), truss: warren(), shutter: shutter(), rib: ribbed(), mull: mullion(),
+    top: redTop(), mx: mxBay(), swiss: curtain(1.8, 3.6, "#0a0c0f", 0.09), bc: darkMetal(), wood: timber(), truss: warren(), shutter: shutter(), rib: ribbed(), mull: mullion(),
   };
-  const size = { aluHi: [7.2, 3.75], aluLo: [7.2, 3.75], tile: [3.6, 3.6], bmA: [6, 3.3], rts: [7.2, 3.8], swiss: [1.8, 3.6], bc: [3.6, 3.7], wood: [1.2, 3], truss: [6, 9] };
+  const size = { top: [7.2, 3.75], mx: [3.6, 3.6], aluHi: [7.2, 3.75], aluLo: [7.2, 3.75], tile: [3.6, 3.6], bmA: [6, 3.3], rts: [7.2, 3.8], swiss: [1.8, 3.6], bc: [3.6, 3.7], wood: [1.2, 3], truss: [6, 9] };
   const BI = ["#d98a12", "#2a2c30", "#c9241a", "#2a2c30", "#e0b21a", "#14613a", "#2a2c30", "#14306f"];
   let seedF = 11;
   const rnd = () => ((seedF = (seedF * 16807) % 2147483647) / 2147483647);
@@ -738,16 +810,21 @@ const facadesReady = Promise.all([loadBin("geo/walls.bin", Float32Array), loadBi
       const nx_ = Math.max(1, Math.round(len / (w * M))), ny = Math.max(1, Math.round(top / ((wantH ?? h) * M)));
       const ws = len / nx_ / (w * M), hs = top / ny / (h * M);
       for (let r = 0; r < ny; r++) for (let c = 0; c < nx_; c++) {
-        const k = key(r, c);
-        push(k, kits[k.split(":")[0]], frame(c * w * M * ws, y0 + r * h * M * hs, ws, hs), 0xffffff);
+        const k = key(r, c, ny);
+        push(k, kits[k.split(":")[0]], frame(c * w * M * ws, y0 + r * h * M * hs, ws, hs), tintOf);
       }
     };
     const cell = `${Math.floor(mx / 45)},${Math.floor(mz / 45)}`;
+    const tintOf = s === 14 ? 0xfff0d2 : 0xffffff;
     if (s === 1) {
       continue;   // ses montants viennent de geo/mullions.bin
-    } else if (s === 2) {
+    } else if (s === 2 || s === 12 || s === 14) {
       if (tall < 0.45 || len < 0.5) continue;
-      grid(dist < HI ? "aluHi" : "aluLo", () => `${dist < HI ? "aluHi" : "aluLo"}:${cell}`);
+      const tier = dist < HI ? "aluHi" : "aluLo";
+      grid(tier, (r, c, ny) => (s === 12 && r === ny - 1 && ny > 1 ? `top:${cell}` : `${tier}:${cell}`));
+    } else if (s === 13) {
+      if (tall < 0.45) continue;
+      grid("mx", () => `mx:${cell}`);
     } else if (s === 3) {
       if (tall < 0.45) continue;
       grid("tile", () => `tile:${cell}`);
@@ -786,51 +863,81 @@ const facadesReady = Promise.all([loadBin("geo/walls.bin", Float32Array), loadBi
       }
     }
   }
-  // Le Rolex : un montant à la hauteur exacte du toit, de la rive à la dalle.
-  for (let i = 0; i < posts.length; i += 6) {
-    const [x, z, top, nx, nz] = posts.subarray(i, i + 6);
-    place.set(nz, 0, nx, x + nx * 0.012, 0, 1, 0, top - GLASS_END, -nx, 0, nz, z + nz * 0.012, 0, 0, 0, 1);
-    place.multiply(scaleM.makeScale(1, (GLASS_END - FASCIA) * UNIT, 1));
-    push(`mull:${Math.floor(x / 45)},${Math.floor(z / 45)}`, kits.mull, place, 0xffffff);
+  // Le Rolex, depuis les contours de son toit : la rive mince, le verre en léger retrait, ses
+  // montants tous les 2,40 m, la dalle, puis le plancher, qui reprend la forme du toit. Sous le
+  // plancher il n'y a rien : c'est le vide des arches.
+  let at = 1;
+  const loops = [];
+  for (let l = 0; l < rolex[0]; l++) {
+    const n = rolex[at++];
+    loops.push(rolex.subarray(at, at + n * 3));
+    at += n * 3;
   }
-  // Puis sa peau, d'un montant au suivant : la rive mince, le verre, la dalle de béton, qui suivent
-  // exactement la ligne du toit.
-  const strip = { body: [], color: [], glass: [] };
-  const roofEdge = lin("#d9d6d0"), concrete = lin("#a7a39b");
-  const quad = (list, ax, az, ay0, ay1, bx, bz, by0, by1, nx, nz) => {
-    // Toujours face à l'extérieur.
-    if ((bz - az) * -1 * nx + (bx - ax) * nz < 0) [ax, az, ay0, ay1, bx, bz, by0, by1] = [bx, bz, by0, by1, ax, az, ay0, ay1];
-    list.push({ p: [ax, ay0, az, bx, by0, bz, bx, by1, bz, ax, ay0, az, bx, by1, bz, ax, ay1, az], n: [nx, 0, nz] });
+  const shellCount = rolex[at++], shell = rolex.subarray(at, at + shellCount * 9);
+  const skin = { glass: [], ceil: [], body: [], color: [], normal: [] };
+  const edge = lin("#dcd9d3"), slabC = lin("#a9a59c"), under = lin("#c9c6bf");
+  const face = (a, b, c, d, n, color) => {                     // quatre coins, dans le sens qui regarde n
+    skin.body.push(...a, ...b, ...c, ...a, ...c, ...d);
+    for (let v = 0; v < 6; v++) { skin.normal.push(...n); skin.color.push(color.r, color.g, color.b); }
   };
-  for (let i = 0; i + 6 < posts.length; i += 6) {
-    const [ax, az, at, nx, nz, ak] = posts.subarray(i, i + 6);
-    const [bx, bz, bt, , , bk] = posts.subarray(i + 6, i + 12);
-    if (Math.floor(ak / 4096) !== Math.floor(bk / 4096) || Math.hypot(bx - ax, bz - az) > 1.3) continue;
-    const out = (d) => [ax + nx * d, az + nz * d, bx + nx * d, bz + nz * d];
-    const [gx, gz, hx, hz] = out(0.006), [fx, fz, ix, iz] = out(0.024);
-    quad(strip.glass, gx, gz, at - GLASS_END, at - FASCIA, hx, hz, bt - GLASS_END, bt - FASCIA, nx, nz);
-    quad(strip.body, fx, fz, at - FASCIA, at + 0.006, ix, iz, bt - FASCIA, bt + 0.006, nx, nz); strip.color.push(roofEdge);
-    quad(strip.body, fx, fz, at - GLASS_END - SLAB, at - GLASS_END, ix, iz, bt - GLASS_END - SLAB, bt - GLASS_END, nx, nz); strip.color.push(concrete);
-  }
-  const buildStrip = (list, colors) => {
-    const pos = new Float32Array(list.length * 18), nor = new Float32Array(list.length * 18), col = new Float32Array(list.length * 18);
-    list.forEach((q, i) => {
-      pos.set(q.p, i * 18);
-      for (let v = 0; v < 6; v++) {
-        nor.set(q.n, i * 18 + v * 3);
-        if (colors) col.set([colors[i].r, colors[i].g, colors[i].b], i * 18 + v * 3);
+  for (const pts of loops) {
+    const n = pts.length / 3;
+    let walked = 0, next = 0;
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n, k = (i + n - 1) % n, m = (j + 1) % n;
+      const ax = pts[i * 3], ay = pts[i * 3 + 1], az = pts[i * 3 + 2], bx = pts[j * 3], by = pts[j * 3 + 1], bz = pts[j * 3 + 2];
+      // La normale de chaque point, moyennée avec ses voisins : pas de marches dans les courbes.
+      const out = (p, q) => { const dx = pts[q * 3] - pts[p * 3], dz = pts[q * 3 + 2] - pts[p * 3 + 2], d = Math.hypot(dx, dz) || 1; return [dz / d, -dx / d]; };
+      const [ax1, az1] = out(k, j), [bx1, bz1] = out(i, m);
+      const la = Math.hypot(ax1, az1) || 1, lb = Math.hypot(bx1, bz1) || 1;
+      const an = [ax1 / la, 0, az1 / la], bn = [bx1 / lb, 0, bz1 / lb];
+      const P = (x, y, z, nrm, d) => [x + nrm[0] * d, y, z + nrm[2] * d];
+      const N = [(an[0] + bn[0]) / 2, 0, (an[2] + bn[2]) / 2];
+      // La rive, puis son dessous jusqu'au verre.
+      face(P(ax, ay - FASCIA, az, an, 0.012), P(bx, by - FASCIA, bz, bn, 0.012), P(bx, by + 0.012, bz, bn, 0.012), P(ax, ay + 0.012, az, an, 0.012), N, edge);
+      face(P(ax, ay - FASCIA, az, an, -RECESS), P(bx, by - FASCIA, bz, bn, -RECESS), P(bx, by - FASCIA, bz, bn, 0.012), P(ax, ay - FASCIA, az, an, 0.012), [0, -1, 0], under);
+      // Le verre.
+      const g0 = P(ax, ay - GLASS_END, az, an, -RECESS), g1 = P(bx, by - GLASS_END, bz, bn, -RECESS), g2 = P(bx, by - FASCIA, bz, bn, -RECESS), g3 = P(ax, ay - FASCIA, az, an, -RECESS);
+      skin.glass.push(...g0, ...g1, ...g2, ...g0, ...g2, ...g3);
+      skin.ceil.push(ay, by, by, ay, by, ay);
+      // La dalle, et son dessus jusqu'au verre.
+      face(P(ax, ay - GLASS_END - SLAB, az, an, 0.012), P(bx, by - GLASS_END - SLAB, bz, bn, 0.012), P(bx, by - GLASS_END, bz, bn, 0.012), P(ax, ay - GLASS_END, az, an, 0.012), N, slabC);
+      face(P(ax, ay - GLASS_END, az, an, 0.012), P(bx, by - GLASS_END, bz, bn, 0.012), P(bx, by - GLASS_END, bz, bn, -RECESS), P(ax, ay - GLASS_END, az, an, -RECESS), [0, 1, 0], slabC);
+      // Les montants.
+      const seg = Math.hypot(bx - ax, bz - az);
+      if (walked >= next) {
+        next = walked + 2.4 * M;
+        const px = ax - an[0] * (RECESS - 0.004), pz = az - an[2] * (RECESS - 0.004);
+        place.set(an[2], 0, an[0], px, 0, 1, 0, ay - GLASS_END, -an[0], 0, an[2], pz, 0, 0, 0, 1);
+        place.multiply(scaleM.makeScale(1, (GLASS_END - FASCIA) * UNIT, 1));
+        push(`mull:${Math.floor(px / 45)},${Math.floor(pz / 45)}`, kits.mull, place, 0xffffff);
       }
-    });
-    const g = new THREE.BufferGeometry();
-    g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-    g.setAttribute("normal", new THREE.BufferAttribute(nor, 3));
-    if (colors) { g.setAttribute("color", new THREE.BufferAttribute(col, 3)); g.setAttribute("aKind", new THREE.BufferAttribute(new Float32Array(list.length * 6), 1)); }
-    return g;
-  };
-  const rolexGlass = new THREE.Mesh(buildStrip(strip.glass), rolexGlassMat);
-  const rolexEdge = new THREE.Mesh(buildStrip(strip.body, strip.color), facadeMat);
-  rolexEdge.castShadow = true; rolexEdge.receiveShadow = true;
-  facadeGroup.add(rolexGlass, rolexEdge);
+      walked += seg;
+    }
+  }
+  const skinGeo = new THREE.BufferGeometry();
+  skinGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(skin.body), 3));
+  skinGeo.setAttribute("normal", new THREE.BufferAttribute(new Float32Array(skin.normal), 3));
+  skinGeo.setAttribute("color", new THREE.BufferAttribute(new Float32Array(skin.color), 3));
+  skinGeo.setAttribute("aKind", new THREE.BufferAttribute(new Float32Array(skin.body.length / 3), 1));
+  const skinMat = facadeMat.clone();
+  skinMat.onBeforeCompile = facadeMat.onBeforeCompile;
+  skinMat.side = THREE.DoubleSide;
+  const rolexSkin = new THREE.Mesh(skinGeo, skinMat);
+  rolexSkin.castShadow = rolexSkin.receiveShadow = true;
+  const glassGeo = new THREE.BufferGeometry();
+  glassGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(skin.glass), 3));
+  glassGeo.setAttribute("aCeil", new THREE.BufferAttribute(new Float32Array(skin.ceil), 1));
+  glassGeo.computeVertexNormals();
+  const rolexGlass = new THREE.Mesh(glassGeo, rolexGlassMat);
+  rolexGlass.castShadow = true;
+  const floorGeo = new THREE.BufferGeometry();
+  floorGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(shell), 3));
+  floorGeo.translate(0, -(GLASS_END + SLAB), 0);
+  floorGeo.computeVertexNormals();
+  const rolexFloor = new THREE.Mesh(floorGeo, new THREE.MeshStandardMaterial({ color: "#7d7a72", roughness: 0.9, side: THREE.DoubleSide }));
+  rolexFloor.castShadow = rolexFloor.receiveShadow = true;
+  rolexParts.add(rolexSkin, rolexGlass, rolexFloor);
   const tint = new THREE.Color();
   let triangles = 0;
   for (const { kit, matrices, colors } of lists.values()) {
@@ -848,7 +955,6 @@ const facadesReady = Promise.all([loadBin("geo/walls.bin", Float32Array), loadBi
     add(kit.body, facadeMat, true);
     add(kit.glass, glassMat, false);
   }
-  window.__facades = { meshes: facadeGroup.children.length, triangles: Math.round(triangles) };
   facadeGroup.visible = campus.scale.y >= 0.999;
   shadowsDirty();
   wake();
@@ -870,6 +976,7 @@ const groundReady = (async () => {
     hiPhoto.value = t;
     hiBox.value.set(b.x0, b.z0, b.x1, b.z1);
     hasHi.value = 1;
+    stale = true;
     wake();
   }).catch(() => {});
   world.add(terrainMesh(L.far, farH, farT, { fade: 0.16, hole: inner(L.mid, 0.36), lake: true, sink: true, lakeMask: farLake }));
@@ -993,6 +1100,16 @@ function applyTheme() {
   scene.environmentIntensity = dark ? 0.45 : 0.32;
   renderer.toneMappingExposure = dark ? 0.8 : 0.62;
   scene.fog = new THREE.FogExp2(dark ? "#1b2433" : "#a8bac3", 0.00005);
+  const skyPaint = document.createElement("canvas");
+  skyPaint.width = 2; skyPaint.height = 256;
+  const brush = skyPaint.getContext("2d"), ramp = brush.createLinearGradient(0, 0, 0, 256);
+  ramp.addColorStop(0, dark ? "#070b14" : "#8eacc2");
+  ramp.addColorStop(0.48, dark ? "#1b2433" : "#a8bac3");
+  ramp.addColorStop(1, dark ? "#1b2433" : "#a8bac3");
+  brush.fillStyle = ramp; brush.fillRect(0, 0, 2, 256);
+  scene.background?.dispose?.();
+  scene.background = new THREE.CanvasTexture(skyPaint);
+  scene.background.colorSpace = THREE.SRGBColorSpace;
   plainMat.color.set(dark ? "#10161c" : "#93a7b0");
   night.value = dark ? 1 : 0;
   wallTone.value.set(dark ? "#8a8d92" : "#e7e3da");
@@ -1100,7 +1217,11 @@ function introFrame(dt) {
   shiftNow = shiftWant * ease(band01(u, 0.9, 1));
   liftNow = liftWant * ease(band01(u, 0.9, 1));
   const rise = Math.max(0.02, ease(band01(u, 0.4, 0.58)));
-  if (Math.abs(campus.scale.y - rise) > 1e-4) { campus.scale.y = rise; facadeGroup.visible = rise >= 0.999; shadowsDirty(); }
+  // Le bâtiment se lève vu de loin : les ombres ne sont recalculées qu'une fois debout.
+  if (Math.abs(campus.scale.y - rise) > 1e-4) {
+    campus.scale.y = rise;
+    if (rise >= 0.999) { facadeGroup.visible = true; shadowsDirty(); }
+  }
   devState.phone.on = ease(band01(u, 0.93, 1)) * devWant.phone.on;
   const beat = INTRO.beats.reduce((acc, b, i) => (u >= b.at ? i : acc), 0);
   if (beat !== intro.beat && card) {
@@ -1147,8 +1268,14 @@ function placeDevice(group, s) {
 // L'image nette à l'arrêt : avec une occlusion ambiante douce (N8AO), chargée à part pour ne
 // rien retarder ; en mouvement, un rendu simple.
 let composer = null, aoPass = null;
+// En mouvement : une image plus petite, lissée, agrandie à l'écran.
+const fast = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 }));
+fast.addPass(new RenderPass(scene, camera));
+fast.addPass(new OutputPass());
+fast.setPixelRatio(dprFast);
+fast.setSize(innerWidth, innerHeight);
 import("n8ao").then(({ N8AOPass }) => {
-  composer = new EffectComposer(renderer);
+  composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: dprNow < 1.5 ? 4 : 0 }));
   composer.addPass(new RenderPass(scene, camera));
   aoPass = new N8AOPass(scene, camera, innerWidth, innerHeight);
   aoPass.configuration.aoRadius = 1.6;
@@ -1159,19 +1286,13 @@ import("n8ao").then(({ N8AOPass }) => {
   aoPass.setQualityMode(small ? "Low" : "Medium");
   composer.addPass(aoPass);
   composer.addPass(new OutputPass());
-  composer.setPixelRatio(DPR_HI);
+  composer.setPixelRatio(dprNow);
   composer.setSize(innerWidth, innerHeight);
   wake();
 }).catch(() => {});
 const clock = new THREE.Clock();
 const introClock = new THREE.Clock(false);
-let visible = true, slowFrames = 0;
-function setDpr(d) {
-  if (d === dprNow) return;
-  dprNow = d;
-  renderer.setPixelRatio(d);
-  renderer.setSize(innerWidth, innerHeight, false);
-}
+let visible = true, slowFrames = 0, paceMs = 16, lastFrame = 0, sharpDone = false, wantSharp = false, sharpTimer = 0;
 function approach(state, want, k) {
   let moving = false;
   for (const n of ["x", "y", "d", "ry", "rx", "on"]) {
@@ -1219,10 +1340,17 @@ function frame() {
   devCam.aspect = camera.aspect;
   devCam.setViewOffset(innerWidth, innerHeight, -shiftNow * innerWidth, liftNow * innerHeight, innerWidth, innerHeight);
   devCam.updateProjectionMatrix();
-  setDpr(moving ? DPR_LO : DPR_HI);
-  const t0 = performance.now();
+  eye.value.set(camPos.x, camPos.y, -camPos.z);
+  if (moving) {
+    sharpDone = false; stale = false;
+    clearTimeout(sharpTimer); sharpTimer = 0;
+  } else if (sharpDone && !stale) return;               // rien n'a changé : on ne dessine rien
+  // Un mouvement : un rendu direct. Un arrêt qui dure : une image avec l'occlusion ambiante, jamais
+  // au milieu d'une lecture par à-coups.
+  const sharp = !moving && wantSharp && composer;
   renderer.autoClear = true;
-  if (composer && !moving && !(intro.active && intro.started)) composer.render();
+  if (sharp) { composer.render(); sharpDone = true; wantSharp = false; stale = false; }
+  else if (moving) fast.render();
   else renderer.render(scene, camera);
   if (phone.visible) {
     renderer.autoClear = false;
@@ -1230,12 +1358,20 @@ function frame() {
     renderer.render(deviceScene, devCam);
   }
   if (moving) {
-    // Une machine qui peine : on baisse encore la définition en mouvement.
-    slowFrames = performance.now() - t0 > 24 ? slowFrames + 1 : Math.max(0, slowFrames - 1);
-    if (slowFrames > 8 && DPR_LO > 0.75) { DPR_LO = Math.max(0.75, DPR_LO - 0.25); slowFrames = 0; }
+    // Une machine qui ne suit pas : l'image en mouvement baisse par paliers, une fois pour toutes.
+    const now = performance.now(), gap = now - lastFrame;
+    lastFrame = now;
+    if (gap < 200) {
+      paceMs += (gap - paceMs) * 0.08;
+      if (paceMs > 24 && dprFast > 0.7 && ++slowFrames > 30) {
+        dprFast = Math.max(0.7, dprFast - 0.2);
+        fast.setPixelRatio(dprFast);
+        slowFrames = 0; paceMs = 16;
+      }
+    }
     wake();
-  } else if (dprNow !== DPR_HI) {
-    wake();
+  } else if (!sharpDone && !sharpTimer) {
+    sharpTimer = setTimeout(() => { sharpTimer = 0; wantSharp = true; wake(); }, 260);
   }
 }
 
@@ -1244,8 +1380,10 @@ function snap() {
   Object.assign(devState.phone, devWant.phone);
 }
 function resize() {
+  stale = true;
   renderer.setSize(innerWidth, innerHeight, false);
   composer?.setSize(innerWidth, innerHeight);
+  fast.setSize(innerWidth, innerHeight);
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
   measure();
@@ -1277,10 +1415,14 @@ if (intro.active && scrollY < 40 && !location.hash) {
   camPos.copy(introPos.getPoint(0)); camLook.copy(introLook.getPoint(0)); shiftNow = 0; liftNow = 0;
   campus.scale.y = 0.02; facadeGroup.visible = false; devState.phone.on = 0;
   const giveUp = setTimeout(() => { intro.active = false; finishInstantly(); }, 10000);
-  Promise.all([groundReady, treesReady.catch(() => {}), buildingsReady.catch(() => {})]).then(() => {
+  Promise.all([groundReady, treesReady.catch(() => {}), buildingsReady.catch(() => {}), facadesReady.catch(() => {})]).then(async () => {
     clearTimeout(giveUp);
     if (!intro.active) return;
-    renderer.compile(scene, camera);
+    // Tout se compile en tâche de fond avant le premier mouvement : pas d'à-coup en route.
+    facadeGroup.visible = true;
+    await renderer.compileAsync(scene, camera).catch(() => {});
+    facadeGroup.visible = false;
+    if (!intro.active) return;
     shadowsDirty();
     intro.started = true;
     root.classList.remove("intro-wait");
