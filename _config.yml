@@ -8,3 +8,6 @@ exclude:
   - geo/veg.py
   - geo/place.py
   - geo/photo.py
+  - geo/alti.py
+  - geo/style.py
+  - geo/site.py

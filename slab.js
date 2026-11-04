@@ -72,8 +72,8 @@ const sun = new THREE.DirectionalLight("#fff3e2", 3);
 sun.castShadow = true;
 sun.shadow.mapSize.set(small ? 2048 : 4096, small ? 2048 : 4096);
 Object.assign(sun.shadow.camera, { left: -62, right: 62, top: 62, bottom: -62, near: 1, far: 300 });
-sun.shadow.bias = -0.0003;
-sun.shadow.normalBias = 0.035;
+sun.shadow.bias = -0.0006;
+sun.shadow.normalBias = 0.09;
 scene.add(sun, sun.target);
 const hemi = new THREE.HemisphereLight("#fbf4e8", "#8a8272", 0.5);
 scene.add(hemi);
@@ -137,14 +137,16 @@ function terrainMaterial(tex, opts) {
 }
 function terrainMesh(layer, heights, tex, opts) {
   const size = layer.size / UNIT, g = layer.grid;
-  const geo = new THREE.PlaneGeometry(size, size, g - 1, g - 1);
+  // Sur téléphone, un sommet sur deux suffit pour le relief fin.
+  const stride = small && g > 400 ? 2 : 1;
+  const geo = new THREE.PlaneGeometry(size, size, (g - 1) / stride, (g - 1) / stride);
   geo.rotateX(-Math.PI / 2);
   const p = geo.attributes.position, uv = geo.attributes.uv;
   for (let i = 0; i < p.count; i++) {
     const x = p.getX(i), z = p.getZ(i);
     const u = x / size + 0.5, v = 0.5 - z / size;
     const col = Math.round(u * (g - 1)), row = Math.round(v * (g - 1));
-    let h = heights[row * g + col] / UNIT * EXAG;
+    let h = heights[row * g + col] * (layer.scale ?? 1) / UNIT * EXAG;
     if (opts.lake) h = Math.max(h, LAKE);
     if (opts.sink) {
       const e = Math.min(u, 1 - u, v, 1 - v), f = Math.min(1, e / 0.14);
@@ -195,14 +197,13 @@ const flipZ = (p) => [p[0], p[1], -p[2]];
 
 const campus = new THREE.Group();
 world.add(campus);
-const RLC = { x0: -12.3, x1: 17.5, z0: -11.2, z1: 11.4 };
 const night = { value: 0 };
 const nearPhoto = { value: null }, nearBox = { value: new THREE.Vector4(0, 0, 1, 0) };
 const wallTone = { value: new THREE.Color("#e7e3da") };
-const roofTone = { value: new THREE.Color("#d8d6d0") };
+const roofTone = { value: new THREE.Color("#c4bcb6") };
 const campusMat = new THREE.MeshStandardMaterial({ color: "#ffffff", roughness: 0.85, side: THREE.DoubleSide });
 campusMat.onBeforeCompile = (shader) => {
-  Object.assign(shader.uniforms, { uNight: night, uNear: nearPhoto, uNearBox: nearBox, uHi: hiPhoto, uHiBox: hiBox, uHasHi: hasHi, uWall: wallTone, uRoof: roofTone });
+  Object.assign(shader.uniforms, { uStyles: styleMap, uNight: night, uNear: nearPhoto, uNearBox: nearBox, uHi: hiPhoto, uHiBox: hiBox, uHasHi: hasHi, uWall: wallTone, uRoof: roofTone });
   shader.vertexShader = shader.vertexShader
     .replace("#include <common>", "#include <common>\nvarying vec3 vLocal;\nvarying vec3 vUp;\nvarying vec2 vSpan;")
     .replace("#include <begin_vertex>", "#include <begin_vertex>\nvLocal = position;\nvUp = normal;\nvSpan = uv;");
@@ -212,7 +213,7 @@ campusMat.onBeforeCompile = (shader) => {
       varying vec3 vUp;
       varying vec2 vSpan;
       uniform float uNight, uHasHi;
-      uniform sampler2D uNear, uHi;
+      uniform sampler2D uNear, uHi, uStyles;
       uniform vec4 uNearBox, uHiBox;
       uniform vec3 uWall, uRoof;
       float gGlass = 0.0, gGloss = 0.0, gLit = 0.0;
@@ -227,83 +228,137 @@ campusMat.onBeforeCompile = (shader) => {
     .replace("#include <color_fragment>", `#include <color_fragment>
       vec3 up = normalize(vUp);
       float roof = smoothstep(0.42, 0.62, abs(up.y));
-      bool inRlc = vLocal.x > ${RLC.x0.toFixed(1)} && vLocal.x < ${RLC.x1.toFixed(1)} && vLocal.z > ${RLC.z0.toFixed(1)} && vLocal.z < ${RLC.z1.toFixed(1)};
+      vec2 su = vLocal.xz / 220.0 + 0.5;
+      float st = all(greaterThan(su, vec2(0.0))) && all(lessThan(su, vec2(1.0))) ? floor(texture2D(uStyles, su).r * 255.0 + 0.5) : 0.0;
       float below = vSpan.x - vLocal.y, above = vLocal.y - vSpan.y;
       float run = abs(up.x) > abs(up.z) ? vLocal.z : vLocal.x;
       float wr = fwidth(run), wy = fwidth(vLocal.y);
+      float dim = uWall.g / 0.77;
+      // La photo aérienne, la plus fine qui couvre ce point.
+      vec2 hu = (vLocal.xz - uHiBox.xy) / (uHiBox.zw - uHiBox.xy);
+      bool hi = uHasHi > 0.5 && min(min(hu.x, 1.0 - hu.x), min(hu.y, 1.0 - hu.y)) > 0.0;
+      vec3 top = hi ? texture2D(uHi, hu).rgb : texture2D(uNear, (vLocal.xz - uNearBox.xy) / uNearBox.z + 0.5).rgb;
       vec3 wall;
-      vec3 top;
-      if (inRlc) {
-        // Le toit : une membrane claire, posée en lés ; seuls le relief et les ombres le dessinent.
-        vec2 p = mat2(0.94, -0.34, 0.34, 0.94) * vLocal.xz;
-        float wp = fwidth(p.x) + fwidth(p.y);
-        float seam = 1.0 - smoothstep(0.0, 0.012 + wp, abs(fract(p.x / 0.5) - 0.5) * 0.5);
-        seam *= 1.0 - smoothstep(0.04, 0.12, wp);
-        float lay = hash(vec2(floor(p.x / 0.5), floor(p.y / 2.4)));
-        top = uRoof * (0.975 + 0.05 * lay) * (1.0 - 0.1 * seam);
-        // La façade, du toit vers le bas.
-        float mull = 1.0 - smoothstep(0.016, 0.016 + wr, abs(fract(run / 0.25) - 0.5) * 0.25);
-        mull *= 1.0 - smoothstep(0.05, 0.14, wr);
-        float isGlass = band(below, 0.06, 0.62, wy);
-        float isSlab = band(below, 0.62, 0.8, wy);
-        float paneId = floor(run / 0.25);
+      if (st == 1.0) {
+        // Le Rolex : la membrane claire de la photo, sans les ombres que la photo a figées. Puis sa
+        // coupe : une rive mince, du verre sur toute la hauteur et de fins montants sombres, la
+        // dalle de béton, le vide sous les arches.
+        top = max(top, uRoof * 0.93);
+        float mull = 1.0 - smoothstep(0.012, 0.012 + wr, abs(fract(run / 0.4) - 0.5) * 0.4);
+        mull *= 1.0 - smoothstep(0.05, 0.16, wr);
+        float isGlass = band(below, 0.05, 0.6, wy);
+        float isSlab = band(below, 0.6, 0.72, wy);
+        float paneId = floor(run / 0.4);
         float pr = hash(vec2(paneId, 5.0));
-        vec3 glass = mix(vec3(0.13, 0.18, 0.22), vec3(0.3, 0.33, 0.33), smoothstep(0.62, 0.1, below)) * (0.86 + 0.28 * pr);
-        gTilt = (vec3(pr, hash(vec2(paneId, 9.0)), 0.5) - 0.5) * 0.05 * isGlass;
-        wall = uRoof * 0.98;
-        wall = mix(wall, mix(glass, vec3(0.8), mull), isGlass);
-        wall = mix(wall, uRoof * 0.8, isSlab);
-        wall = mix(wall, vec3(0.1, 0.105, 0.11), step(0.8, below));
+        vec3 glass = mix(vec3(0.1, 0.13, 0.15), vec3(0.27, 0.26, 0.23), smoothstep(0.6, 0.08, below)) * (0.86 + 0.28 * pr);
+        wall = uRoof * 0.92;
+        wall = mix(wall, mix(glass, vec3(0.035, 0.038, 0.042), mull), isGlass);
+        wall = mix(wall, uRoof * 0.62, isSlab);
+        wall = mix(wall, vec3(0.09, 0.09, 0.095), step(0.72, below));
         gGlass = isGlass * (1.0 - mull);
         gGloss = gGlass;
+        gTilt = (vec3(pr, hash(vec2(paneId, 9.0)), 0.5) - 0.5) * 0.05 * isGlass;
         gLit = gGlass * uNight;
       } else {
-        vec2 hu = (vec2(vLocal.x, vLocal.z) - uHiBox.xy) / (uHiBox.zw - uHiBox.xy);
-        bool hi = uHasHi > 0.5 && min(min(hu.x, 1.0 - hu.x), min(hu.y, 1.0 - hu.y)) > 0.0;
-        vec2 nu = (vLocal.xz - uNearBox.xy) / uNearBox.z + 0.5;
-        top = hi ? texture2D(uHi, hu).rgb : texture2D(uNear, nu).rgb;
-        top = mix(top, vec3(dot(top, vec3(0.333))), 0.12);
-        // Chaque bâtiment tire de son pied une teinte et un type de façade : mur-rideau, bandeaux
-        // vitrés ou fenêtres percées ; bardage sombre pour quelques-uns.
+        // Chaque famille de façade, relevée sur des photos du campus : matière, hauteur d'étage,
+        // largeur de travée, hauteur et largeur des vitrages, stores, part de verre vue de loin.
         float bid = floor(vSpan.y * 40.0);
         float kind = hash(vec2(bid, 11.0)), tint = hash(vec2(bid, 3.0));
-        float curtain = step(kind, 0.3), ribbon = step(0.3, kind) * step(kind, 0.7);
         vec3 skin = uWall * mix(vec3(0.8, 0.79, 0.77), vec3(1.0, 0.985, 0.95), tint);
-        skin = mix(skin, uWall * vec3(0.5, 0.51, 0.53), step(0.86, kind));
-        // La patine : des taches larges, des coulures, le pied plus sombre.
+        vec3 pane0 = vec3(0.09, 0.12, 0.15), pane1 = vec3(0.25, 0.29, 0.31);
+        float fh = 0.55, cw = 0.42, rowA = 0.3, rowB = 0.82, fill = 0.7, ribs = 0.0, blinds = 0.42, cover = 0.2, weather = 1.0;
+        if (st == 0.0) {
+          float curtain = step(kind, 0.16), ribbon = step(0.16, kind) * step(kind, 0.6);
+          cw = mix(0.42, 0.28, curtain); rowA = mix(0.3, 0.16, curtain); rowB = mix(0.82, 0.96, curtain);
+          fill = mix(0.7, 0.95, max(curtain, ribbon)); cover = mix(mix(0.2, 0.34, ribbon), 0.62, curtain);
+        } else if (st == 2.0) {      // ME, MA, CM, PH, GC… : aluminium clair, bandeaux vitrés continus
+          skin = vec3(0.5, 0.52, 0.54) * dim; fh = 0.62; cw = 0.24; rowA = 0.44; rowB = 0.93; fill = 0.95; ribs = 1.0; blinds = 0.2; cover = 0.42; weather = 0.45;
+          pane0 = vec3(0.06, 0.1, 0.14); pane1 = vec3(0.16, 0.24, 0.3);
+        } else if (st == 3.0) {      // ELA…, INF… : le même dessin en ocre
+          skin = vec3(0.69, 0.51, 0.31) * dim; fh = 0.62; cw = 0.24; rowA = 0.44; rowB = 0.93; fill = 0.95; ribs = 1.0; blinds = 0.2; cover = 0.38; weather = 0.6;
+        } else if (st == 4.0) {      // ME D : volets d'aluminium inclinés
+          skin = vec3(0.58, 0.6, 0.62) * dim; fh = 0.62; cw = 0.46; rowA = 0.0; rowB = 1.0; fill = 1.0; ribs = 1.0; blinds = 0.0; cover = 0.14; weather = 0.3;
+        } else if (st == 5.0) {      // BI : bandes de couleur sur noir
+          skin = vec3(0.025); fh = 0.62; cw = 0.3; rowA = 0.12; rowB = 0.9; fill = 0.9; blinds = 0.0; cover = 0.3; weather = 0.2;
+        } else if (st == 6.0) {      // BM : enduit gris clair, fenêtres larges à stores
+          skin = vec3(0.47, 0.53, 0.55) * dim; fh = 0.52; cw = 0.5; rowA = 0.26; rowB = 0.8; fill = 0.82; blinds = 0.72; cover = 0.3; weather = 0.7;
+        } else if (st == 7.0) {      // SwissTech : mur-rideau bleu
+          skin = vec3(0.03, 0.04, 0.05); fh = 0.7; cw = 0.25; rowA = 0.02; rowB = 0.98; fill = 0.97; blinds = 0.0; cover = 0.9; weather = 0.0;
+          pane0 = vec3(0.03, 0.09, 0.17); pane1 = vec3(0.09, 0.2, 0.32);
+        } else if (st == 8.0) {      // BC : métal sombre, hauts vitrages
+          skin = vec3(0.03, 0.032, 0.036); fh = 0.62; cw = 0.2; rowA = 0.08; rowB = 0.92; fill = 0.72; blinds = 0.0; cover = 0.45; weather = 0.1;
+        } else if (st == 9.0) {      // RTS : boîtes minérales taupe, très grandes baies
+          skin = vec3(0.34, 0.3, 0.25) * dim; fh = 1.0; cw = 0.92; rowA = 0.2; rowB = 0.84; fill = 0.8; blinds = 0.0; cover = 0.4; weather = 0.4;
+        } else if (st == 10.0) {     // RTS : la dalle suspendue, vitrée, traversée de poutres Warren
+          skin = vec3(0.55) * dim; fh = 1.5; cw = 2.0; rowA = 0.07; rowB = 0.93; fill = 1.0; blinds = 0.0; cover = 0.75; weather = 0.2;
+          pane0 = vec3(0.08, 0.12, 0.14); pane1 = vec3(0.2, 0.25, 0.26);
+        } else if (st == 11.0) {     // ArtLab : bois sous un long toit sombre
+          skin = vec3(0.33, 0.19, 0.09) * dim; fh = 1.0; cw = 0.5; rowA = 0.05; rowB = 0.92; fill = 0.86; blinds = 0.0; cover = 0.5; weather = 0.3;
+        }
         vec2 wp = vec2(run, vLocal.y);
         float stain = noise(wp * vec2(1.1, 0.6)) * 0.6 + noise(wp * vec2(4.5, 1.4)) * 0.4;
         float drip = noise(vec2(run * 11.0, vLocal.y * 0.5));
-        skin *= (0.9 + 0.17 * stain) * mix(0.8, 1.0, smoothstep(0.0, 0.55, above));
-        float lvl = above / 0.55;
-        float col = run / mix(0.42, 0.28, curtain);
+        skin *= mix(1.0, 0.9 + 0.17 * stain, weather) * mix(mix(1.0, 0.8, weather), 1.0, smoothstep(0.0, 0.55, above));
+        if (st == 5.0 && above > 0.62) {
+          float s = floor(run / 0.75), c6 = s - 6.0 * floor(s / 6.0);
+          skin = c6 < 1.0 ? vec3(0.9, 0.55, 0.02) : c6 < 2.0 ? vec3(0.02, 0.26, 0.09) : c6 < 3.0 ? vec3(0.85, 0.2, 0.02) : c6 < 4.0 ? vec3(0.02, 0.1, 0.42) : c6 < 5.0 ? vec3(0.95, 0.72, 0.03) : vec3(0.6, 0.04, 0.03);
+          skin *= dim;
+          fill = 0.0;
+        }
+        float lvl = above / fh, col = run / cw;
         float fy = fract(lvl), fx = fract(col);
-        float rowA = mix(0.3, 0.16, curtain), rowB = mix(0.82, 0.96, curtain);
-        float fill = mix(0.7, 0.95, max(curtain, ribbon));
         float wl = fwidth(lvl), wc = fwidth(col);
         float win = band(fy, rowA, rowB, wl) * band(fx, 0.5 - fill * 0.5, 0.5 + fill * 0.5, wc);
         float detail = 1.0 - smoothstep(0.04, 0.12, max(wr, wy));
-        // Une vitre n'est jamais comme sa voisine : un reflet à elle, des stores plus ou moins baissés.
         vec2 pid = vec2(floor(col), floor(lvl)) + bid;
         float r1 = hash(pid), r2 = hash(pid + 7.0), r3 = hash(pid + 13.0);
         float t = clamp((fy - rowA) / (rowB - rowA), 0.0, 1.0);
-        float blind = step(0.58, r2) * step(1.0 - r1 * 0.85, t);
-        vec3 pane = mix(vec3(0.09, 0.12, 0.15), vec3(0.25, 0.29, 0.31), r3);
-        vec3 slats = vec3(0.64, 0.62, 0.57) * (0.9 + 0.1 * sin(t * 60.0));
-        pane = mix(pane, slats, blind);
-        pane *= 1.0 - 0.55 * smoothstep(rowB - 0.08, rowB, fy);
+        float blind = step(1.0 - blinds, r2) * step(1.0 - r1 * 0.85, t);
+        vec3 pane = mix(pane0, pane1, r3);
+        pane = mix(pane, vec3(0.62, 0.6, 0.55) * (0.9 + 0.1 * sin(t * 60.0)), blind);
+        pane *= 1.0 - 0.5 * smoothstep(rowB - 0.08, rowB, fy);
         float sill = band(fy, rowA - 0.04, rowA, wl);
-        float under = smoothstep(rowA, 0.0, fy) * (1.0 - curtain);
-        vec3 near = skin * (1.0 - 0.16 * under * drip) * (1.0 + 0.12 * sill);
+        float under = smoothstep(rowA, 0.0, fy);
+        vec3 near = skin * (1.0 - 0.16 * under * drip * weather) * (1.0 + 0.12 * sill);
         near *= 1.0 - 0.14 * band(fy, 0.0, 0.015, wl);
-        float cover = mix(mix(0.2, 0.34, ribbon), 0.62, curtain);
-        vec3 far = mix(skin, vec3(0.2, 0.24, 0.27), cover);
-        win *= step(0.3, above);
+        near *= 1.0 - 0.12 * ribs * step(0.5, fract(vLocal.y / 0.05));
+        if (st == 4.0) {
+          // Des volets de biais, chacun penché à sa façon ; un sur quatre ouvert sur le verre.
+          float sk = (r1 - 0.5) * 0.7;
+          float gx = fract(col + (fy - 0.5) * sk);
+          float gap = 1.0 - band(gx, 0.05, 0.95, wc);
+          near = mix(skin * (0.82 + 0.36 * r3), vec3(0.03), gap);
+          near *= 1.0 - 0.14 * step(0.5, fract(vLocal.y / 0.035));
+          win = step(0.76, r2) * (1.0 - gap);
+        }
+        if (st == 9.0) {
+          // Trois meneaux par baie.
+          float m3 = 1.0 - band(fract((fx - 0.1) / 0.8 * 3.0), 0.04, 0.96, wc * 3.0);
+          pane = mix(pane, skin * 0.5, m3);
+        }
+        if (st == 10.0) {
+          // Les poutres Warren : des diagonales claires dans le verre.
+          float tri = abs(fract(run / 2.0) - 0.5) * 2.0;
+          float truss = 1.0 - smoothstep(0.0, 0.03 + wl, abs(tri - fy));
+          pane = mix(pane, vec3(0.68, 0.68, 0.66) * dim, truss);
+        }
+        float blend = st == 4.0 ? 0.14 : cover;
+        vec3 far = mix(skin, mix(pane0, pane1, 0.5), blend);
+        win *= step(0.3 * step(st, 0.5), above);
         wall = mix(far, mix(near, pane, win), detail);
         gGlass = win * detail;
         gGloss = win * (1.0 - blind) * detail * 0.85;
         gTilt = (vec3(r1, r2, r3) - 0.5) * 0.09 * gGloss;
-        gLit = win * step(0.55, r2) * uNight;
+        gLit = win * step(st == 10.0 ? 0.0 : 0.55, r2) * uNight;
+        // Sur les photos, la RTS est un chantier : son toit est dessiné, à sheds pour la dalle.
+        if (st == 9.0) top = vec3(0.4, 0.39, 0.37) * dim;
+        if (st == 10.0) {
+          float sd = dot(vLocal.xz, vec2(0.82, 0.57)) / 1.1, sw = fwidth(sd);
+          float shed = band(fract(sd), 0.62, 0.98, sw);
+          shed = mix(0.36, shed, 1.0 - smoothstep(0.2, 0.5, sw));
+          top = mix(vec3(0.55, 0.55, 0.54), vec3(0.12, 0.17, 0.2), shed) * dim;
+        }
+        top = mix(top, vec3(dot(top, vec3(0.333))), 0.12);
       }
       diffuseColor.rgb = mix(wall, top, roof);
       gGlass *= 1.0 - roof; gGloss *= 1.0 - roof; gLit *= 1.0 - roof;`)
@@ -313,7 +368,15 @@ campusMat.onBeforeCompile = (shader) => {
     .replace("#include <emissivemap_fragment>", "#include <emissivemap_fragment>\ntotalEmissiveRadiance += vec3(1.0, 0.72, 0.42) * gLit * 1.3;");
 };
 const draco = new DRACOLoader().setDecoderPath("https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/libs/draco/");
-const buildingsReady = new Promise((resolve, reject) => draco.load("geo/campus.drc", (geo) => {
+const styleMap = { value: null };
+const buildingsReady = new Promise((resolve, reject) => draco.load("geo/campus.drc", async (geo) => {
+  const styles = await loadTex("geo/styles.png");
+  styles.colorSpace = THREE.NoColorSpace;
+  styles.magFilter = styles.minFilter = THREE.NearestFilter;
+  styles.generateMipmaps = false;
+  styles.anisotropy = 1;
+  styles.needsUpdate = true;
+  styleMap.value = styles;
   const mesh = new THREE.Mesh(geo, campusMat);
   mesh.castShadow = mesh.receiveShadow = true;
   campus.add(mesh);
@@ -533,7 +596,7 @@ function applyTheme() {
   plainMat.color.set(dark ? "#10161c" : "#93a7b0");
   night.value = dark ? 1 : 0;
   wallTone.value.set(dark ? "#8a8d92" : "#e7e3da");
-  roofTone.value.set(dark ? "#8f9298" : "#d8d6d0");
+  roofTone.value.set(dark ? "#8f9298" : "#c4bcb6");
   water.value.set(dark ? "#16222f" : "#4f6f84");
   sun.color.set(dark ? "#8fa8d0" : "#fff3e2");
   sun.intensity = dark ? 1.6 : 3.8;
@@ -550,7 +613,7 @@ const OFF_PHONE = D(0.45, -1.6, 5.4, -0.3, 0.2, null, 0);
 const STOPS = {
   hero: { pos: [-20, 6.5, 21], look: [6, 10.8, -14], shift: 0.1, phone: D(0.66, -0.1, 5.8, -0.5, 0.06, "iphone-today") },
   today: { pos: [-30, 9, 26], look: [4, 2, 0], shift: -0.14, phone: OFF_PHONE },
-  import: { pos: [32, 8, 22], look: [2, 2, 0], shift: 0.14, phone: OFF_PHONE },
+  import: { pos: [-37, 8, -15], look: [2, 2, 0], shift: 0.14, phone: OFF_PHONE },
   etude: { pos: [-27, 5, 15], look: [6, 2.4, 0], shift: -0.14, phone: OFF_PHONE },
   hours: { pos: [-20, 30, 34], look: [2, 0, -6], shift: 0.14, phone: OFF_PHONE },
   groups: { pos: [30, 9, -24], look: [2, 2, 0], shift: -0.14, phone: OFF_PHONE },

@@ -3,7 +3,7 @@
 import json, math, struct, sys, urllib.parse
 import numpy as np
 SRC, OUT = sys.argv[1], sys.argv[2]
-LAT, LON = math.radians(46.5184), math.radians(6.5681)
+LAT, LON = math.radians(46.518353342942014), math.radians(6.568340957164764)  # le centre de la scène (pixel z19)
 A, F = 6378137.0, 1 / 298.257223563
 E2 = F * (2 - F)
 n0 = A / math.sqrt(1 - E2 * math.sin(LAT) ** 2)
