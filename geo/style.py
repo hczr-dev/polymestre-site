@@ -2,7 +2,7 @@
 # son nom dans OpenStreetMap. 1024² sur ±110 unités ; rouge = numéro de famille. Sortie : styles.png.
 # 0 divers · 1 Rolex · 2 aluminium clair à bandeaux · 3 ocre EL/IN · 4 volets inclinés (ME D) · 5 BI
 # 6 BM · 7 mur-rideau · 8 métal sombre · 9 boîtes RTS · 10 dalle RTS · 11 bois (ArtLab)
-# 12 aluminium à étage rouge (ME, MA, CM, CE, PH) · 13 MX · 14 CH
+# 12 aluminium à étage rouge (ME, MA, CM, CE, PH) · 13 MX · 14 CH · 15 aile noire de BI
 import json, math, re, sys
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
@@ -39,6 +39,7 @@ def box(cx, cz, w, dd, deg):
     a = math.radians(deg); c, s = math.cos(a), math.sin(a)
     return [(cx + u * c - v * s, cz + u * s + v * c) for u, v in ((-w / 2, -dd / 2), (w / 2, -dd / 2), (w / 2, dd / 2), (-w / 2, dd / 2))]
 for b in (box(25.4, 8.5, 7, 5.4, -35), box(23.8, 0.4, 4.2, 6, 0)): d.polygon([px(p) for p in b], fill=9)
+d.polygon([px(p) for p in [(4.85, 26.6), (4.91, 21.18), (6.3, 21.19), (6.24, 26.61)]], fill=15)   # l'aile basse de BI
 a = np.asarray(img)
 grown = np.asarray(img.filter(ImageFilter.MaxFilter(5)))
 a = np.where(a == 0, grown, a)

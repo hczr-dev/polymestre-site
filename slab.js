@@ -660,6 +660,8 @@ function mxBay() {
   m.pane(0.42, 1.14, 3.6, 3.52, 0.03);
   return m.done();
 }
+function steelPost() { const m = new Module(); m.box(-0.11, 0, -0.11, 0.11, 1, 0.11, "#2b2d31"); return m.done(); }
+function plainWall() { const m = new Module(); m.box(0, 0, 0, 1, 1, 0.12, "#ffffff", RENDER); return m.done(); }
 function shutter() { const m = new Module(); m.box(0, 0, 0, 1, 1, 0.07, "#b8bcc0", LOUVRE); return m.done(); }
 function ribbed() { const m = new Module(); m.box(0, 0, 0, 1, 1, 0.05, "#ffffff", RIB); return m.done(); }
 function mullion() { const m = new Module(); m.box(-0.035, 0, 0, 0.035, 1, 0.16, "#15171a"); return m.done(); }
@@ -750,14 +752,14 @@ rolexGlassMat.onBeforeCompile = (shader) => {
   shader.uniforms.uNight = night;
   shader.uniforms.uEye = eye;
   shader.vertexShader = shader.vertexShader
-    .replace("#include <common>", "#include <common>\nattribute float aCeil;\nvarying float vCeil;\nvarying vec3 vIn;")
-    .replace("#include <begin_vertex>", "#include <begin_vertex>\nvCeil = aCeil;\nvIn = position;");
+    .replace("#include <common>", "#include <common>\nattribute float aCeil;\nattribute float aBase;\nvarying float vCeil;\nvarying float vBase;\nvarying vec3 vIn;")
+    .replace("#include <begin_vertex>", "#include <begin_vertex>\nvCeil = aCeil;\nvBase = aBase;\nvIn = position;");
   shader.fragmentShader = shader.fragmentShader
-    .replace("#include <common>", "#include <common>\nuniform float uNight;\nuniform vec3 uEye;\nvarying float vCeil;\nvarying vec3 vIn;")
+    .replace("#include <common>", "#include <common>\nuniform float uNight;\nuniform vec3 uEye;\nvarying float vCeil;\nvarying float vBase;\nvarying vec3 vIn;")
     .replace("#include <emissivemap_fragment>", `#include <emissivemap_fragment>
       vec3 ray = normalize(vIn - uEye);
       float up = ray.y > 0.0 ? 1.0 : 0.0;
-      float plane = mix(vCeil - 0.6, vCeil - 0.05, up);
+      float plane = mix(vBase, vCeil - 0.05, up);
       float t = abs(plane - vIn.y) / max(abs(ray.y), 0.004);
       vec3 hit = vIn + ray * t;
       float strip = smoothstep(0.42, 0.5, abs(fract(hit.x / 0.9) - 0.5)) * up;
@@ -767,13 +769,13 @@ rolexGlassMat.onBeforeCompile = (shader) => {
       float see = (1.0 - pow(1.0 - facing, 3.0));
       totalEmissiveRadiance += room * see * mix(0.16, 0.95, uNight) * vec3(1.0, 0.9, 0.76);`);
 };
-const FASCIA = 0.05, GLASS_END = 0.6, SLAB = 0.12, RECESS = 0.04;   // la coupe du Rolex, sous le toit (unités)
+const FASCIA = 0.05, SLAB = 0.12, RECESS = 0.04;   // la coupe du Rolex, sous le toit (unités)
 const facadeGroup = new THREE.Group();
 facadeGroup.visible = false;
 campus.add(facadeGroup);
 const rolexParts = new THREE.Group();
 campus.add(rolexParts);
-const facadesReady = Promise.all([loadBin("geo/walls.bin", Float32Array), loadBin("geo/rolex.bin", Float32Array)]).then(([a, rolex]) => {
+const facadesReady = Promise.all([loadBin("geo/walls.bin", Float32Array), loadBin("geo/rolex.bin", Float32Array), loadBin("geo/canopies.bin", Float32Array)]).then(([a, rolex, roofs]) => {
   const HI = small ? 0 : 44, LO = small ? 95 : 135;
   const place = new THREE.Matrix4(), scaleM = new THREE.Matrix4(), turn = new THREE.Matrix4();
   const lists = new Map();                            // clé → { kit, matrices, colors }
@@ -784,7 +786,7 @@ const facadesReady = Promise.all([loadBin("geo/walls.bin", Float32Array), loadBi
   };
   const kits = {
     aluHi: aluminium(true), aluLo: aluminium(false), tile: ceramic(), bmA: panelled(true), bmB: panelled(false), rts: rtsBox(),
-    top: redTop(), mx: mxBay(), swiss: curtain(1.8, 3.6, "#0a0c0f", 0.09), bc: darkMetal(), wood: timber(), truss: warren(), shutter: shutter(), rib: ribbed(), mull: mullion(),
+    top: redTop(), mx: mxBay(), plain: plainWall(), post: steelPost(), swiss: curtain(1.8, 3.6, "#0a0c0f", 0.09), bc: darkMetal(), wood: timber(), truss: warren(), shutter: shutter(), rib: ribbed(), mull: mullion(),
   };
   const size = { top: [7.2, 3.75], mx: [3.6, 3.6], aluHi: [7.2, 3.75], aluLo: [7.2, 3.75], tile: [3.6, 3.6], bmA: [6, 3.3], rts: [7.2, 3.8], swiss: [1.8, 3.6], bc: [3.6, 3.7], wood: [1.2, 3], truss: [6, 9] };
   const BI = ["#d98a12", "#2a2c30", "#c9241a", "#2a2c30", "#e0b21a", "#14613a", "#2a2c30", "#14306f"];
@@ -820,6 +822,7 @@ const facadesReady = Promise.all([loadBin("geo/walls.bin", Float32Array), loadBi
       continue;   // ses montants viennent de geo/mullions.bin
     } else if (s === 2 || s === 12 || s === 14) {
       if (tall < 0.45 || len < 0.5) continue;
+      if (s === 14 && len < 1.1) { push(`plain:${cell}`, kits.plain, frame(0, y0, len * UNIT, tall * UNIT, 1), 0xd8c7a4); continue; }
       const tier = dist < HI ? "aluHi" : "aluLo";
       grid(tier, (r, c, ny) => (s === 12 && r === ny - 1 && ny > 1 ? `top:${cell}` : `${tier}:${cell}`));
     } else if (s === 13) {
@@ -834,7 +837,7 @@ const facadesReady = Promise.all([loadBin("geo/walls.bin", Float32Array), loadBi
       grid("rts", () => `rts:${cell}`);
     } else if (s === 7) {
       grid("swiss", () => `swiss:${cell}`);
-    } else if (s === 8) {
+    } else if (s === 8 || s === 15) {
       grid("bc", () => `bc:${cell}`);
     } else if (s === 11) {
       grid("wood", () => `wood:${cell}`);
@@ -863,6 +866,17 @@ const facadesReady = Promise.all([loadBin("geo/walls.bin", Float32Array), loadBi
       }
     }
   }
+  // Les auvents : des poteaux d'acier tous les 7,20 m, de part et d'autre.
+  for (let i = 0; i < roofs.length; i += 8) {
+    const [cx, cz, ax, az, hl, hw, top, foot] = roofs.subarray(i, i + 8);
+    const bx = -az, bz = ax, n = Math.max(1, Math.round((hl * 2) / (7.2 * M)));
+    for (let c = 0; c <= n; c++) for (const side of [-1, 1]) {
+      const u = -hl + 0.1 + ((hl * 2 - 0.2) * c) / n, v = side * Math.max(0, hw - 0.1);
+      const x = cx + ax * u + bx * v, z = cz + az * u + bz * v;
+      place.makeTranslation(x, foot, z).multiply(scaleM.makeScale(1, (top - foot) * UNIT, 1));
+      push(`post:${Math.floor(x / 45)},${Math.floor(z / 45)}`, kits.post, place, 0xffffff);
+    }
+  }
   // Le Rolex, depuis les contours de son toit : la rive mince, le verre en léger retrait, ses
   // montants tous les 2,40 m, la dalle, puis le plancher, qui reprend la forme du toit. Sous le
   // plancher il n'y a rien : c'est le vide des arches.
@@ -870,46 +884,48 @@ const facadesReady = Promise.all([loadBin("geo/walls.bin", Float32Array), loadBi
   const loops = [];
   for (let l = 0; l < rolex[0]; l++) {
     const n = rolex[at++];
-    loops.push(rolex.subarray(at, at + n * 3));
-    at += n * 3;
+    loops.push(rolex.subarray(at, at + n * 4));
+    at += n * 4;
   }
   const shellCount = rolex[at++], shell = rolex.subarray(at, at + shellCount * 9);
-  const skin = { glass: [], ceil: [], body: [], color: [], normal: [] };
-  const edge = lin("#dcd9d3"), slabC = lin("#a9a59c"), under = lin("#c9c6bf");
+  const skin = { glass: [], ceil: [], base: [], body: [], color: [], normal: [] };
+  const edge = lin("#dcd9d3"), slabC = lin("#a9a59c"), under = lin("#c9c6bf"), vault = lin("#8d8a82");
   const face = (a, b, c, d, n, color) => {                     // quatre coins, dans le sens qui regarde n
     skin.body.push(...a, ...b, ...c, ...a, ...c, ...d);
     for (let v = 0; v < 6; v++) { skin.normal.push(...n); skin.color.push(color.r, color.g, color.b); }
   };
   for (const pts of loops) {
-    const n = pts.length / 3;
+    const n = pts.length / 4;
     let walked = 0, next = 0;
     for (let i = 0; i < n; i++) {
       const j = (i + 1) % n, k = (i + n - 1) % n, m = (j + 1) % n;
-      const ax = pts[i * 3], ay = pts[i * 3 + 1], az = pts[i * 3 + 2], bx = pts[j * 3], by = pts[j * 3 + 1], bz = pts[j * 3 + 2];
+      const ax = pts[i * 4], ay = pts[i * 4 + 1], az = pts[i * 4 + 2], af = pts[i * 4 + 3];
+      const bx = pts[j * 4], by = pts[j * 4 + 1], bz = pts[j * 4 + 2], bf = pts[j * 4 + 3];
       // La normale de chaque point, moyennée avec ses voisins : pas de marches dans les courbes.
-      const out = (p, q) => { const dx = pts[q * 3] - pts[p * 3], dz = pts[q * 3 + 2] - pts[p * 3 + 2], d = Math.hypot(dx, dz) || 1; return [dz / d, -dx / d]; };
-      const [ax1, az1] = out(k, j), [bx1, bz1] = out(i, m);
-      const la = Math.hypot(ax1, az1) || 1, lb = Math.hypot(bx1, bz1) || 1;
-      const an = [ax1 / la, 0, az1 / la], bn = [bx1 / lb, 0, bz1 / lb];
+      const out = (p, q) => { const dx = pts[q * 4] - pts[p * 4], dz = pts[q * 4 + 2] - pts[p * 4 + 2], d = Math.hypot(dx, dz) || 1; return [dz / d, 0, -dx / d]; };
+      const an = out(k, j), bn = out(i, m);
       const P = (x, y, z, nrm, d) => [x + nrm[0] * d, y, z + nrm[2] * d];
       const N = [(an[0] + bn[0]) / 2, 0, (an[2] + bn[2]) / 2];
+      const ag = af + SLAB, bg = bf + SLAB;                    // le bas du verre, sur la dalle
       // La rive, puis son dessous jusqu'au verre.
       face(P(ax, ay - FASCIA, az, an, 0.012), P(bx, by - FASCIA, bz, bn, 0.012), P(bx, by + 0.012, bz, bn, 0.012), P(ax, ay + 0.012, az, an, 0.012), N, edge);
       face(P(ax, ay - FASCIA, az, an, -RECESS), P(bx, by - FASCIA, bz, bn, -RECESS), P(bx, by - FASCIA, bz, bn, 0.012), P(ax, ay - FASCIA, az, an, 0.012), [0, -1, 0], under);
       // Le verre.
-      const g0 = P(ax, ay - GLASS_END, az, an, -RECESS), g1 = P(bx, by - GLASS_END, bz, bn, -RECESS), g2 = P(bx, by - FASCIA, bz, bn, -RECESS), g3 = P(ax, ay - FASCIA, az, an, -RECESS);
+      const g0 = P(ax, ag, az, an, -RECESS), g1 = P(bx, bg, bz, bn, -RECESS), g2 = P(bx, by - FASCIA, bz, bn, -RECESS), g3 = P(ax, ay - FASCIA, az, an, -RECESS);
       skin.glass.push(...g0, ...g1, ...g2, ...g0, ...g2, ...g3);
       skin.ceil.push(ay, by, by, ay, by, ay);
-      // La dalle, et son dessus jusqu'au verre.
-      face(P(ax, ay - GLASS_END - SLAB, az, an, 0.012), P(bx, by - GLASS_END - SLAB, bz, bn, 0.012), P(bx, by - GLASS_END, bz, bn, 0.012), P(ax, ay - GLASS_END, az, an, 0.012), N, slabC);
-      face(P(ax, ay - GLASS_END, az, an, 0.012), P(bx, by - GLASS_END, bz, bn, 0.012), P(bx, by - GLASS_END, bz, bn, -RECESS), P(ax, ay - GLASS_END, az, an, -RECESS), [0, 1, 0], slabC);
+      skin.base.push(ag, bg, bg, ag, bg, ag);
+      // La dalle, son dessus jusqu'au verre, et son dessous vers l'intérieur (la voûte des arches).
+      face(P(ax, af, az, an, 0.012), P(bx, bf, bz, bn, 0.012), P(bx, bg, bz, bn, 0.012), P(ax, ag, az, an, 0.012), N, slabC);
+      face(P(ax, ag, az, an, 0.012), P(bx, bg, bz, bn, 0.012), P(bx, bg, bz, bn, -RECESS), P(ax, ag, az, an, -RECESS), [0, 1, 0], slabC);
+      face(P(ax, af, az, an, -0.7), P(bx, bf, bz, bn, -0.7), P(bx, bf, bz, bn, 0.012), P(ax, af, az, an, 0.012), [0, -1, 0], vault);
       // Les montants.
       const seg = Math.hypot(bx - ax, bz - az);
       if (walked >= next) {
         next = walked + 2.4 * M;
         const px = ax - an[0] * (RECESS - 0.004), pz = az - an[2] * (RECESS - 0.004);
-        place.set(an[2], 0, an[0], px, 0, 1, 0, ay - GLASS_END, -an[0], 0, an[2], pz, 0, 0, 0, 1);
-        place.multiply(scaleM.makeScale(1, (GLASS_END - FASCIA) * UNIT, 1));
+        place.set(an[2], 0, an[0], px, 0, 1, 0, ag, -an[0], 0, an[2], pz, 0, 0, 0, 1);
+        place.multiply(scaleM.makeScale(1, (ay - FASCIA - ag) * UNIT, 1));
         push(`mull:${Math.floor(px / 45)},${Math.floor(pz / 45)}`, kits.mull, place, 0xffffff);
       }
       walked += seg;
@@ -928,12 +944,12 @@ const facadesReady = Promise.all([loadBin("geo/walls.bin", Float32Array), loadBi
   const glassGeo = new THREE.BufferGeometry();
   glassGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(skin.glass), 3));
   glassGeo.setAttribute("aCeil", new THREE.BufferAttribute(new Float32Array(skin.ceil), 1));
+  glassGeo.setAttribute("aBase", new THREE.BufferAttribute(new Float32Array(skin.base), 1));
   glassGeo.computeVertexNormals();
   const rolexGlass = new THREE.Mesh(glassGeo, rolexGlassMat);
   rolexGlass.castShadow = true;
   const floorGeo = new THREE.BufferGeometry();
   floorGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(shell), 3));
-  floorGeo.translate(0, -(GLASS_END + SLAB), 0);
   floorGeo.computeVertexNormals();
   const rolexFloor = new THREE.Mesh(floorGeo, new THREE.MeshStandardMaterial({ color: "#7d7a72", roughness: 0.9, side: THREE.DoubleSide }));
   rolexFloor.castShadow = rolexFloor.receiveShadow = true;
@@ -980,8 +996,8 @@ const groundReady = (async () => {
     wake();
   }).catch(() => {});
   world.add(terrainMesh(L.far, farH, farT, { fade: 0.16, hole: inner(L.mid, 0.36), lake: true, sink: true, lakeMask: farLake }));
-  world.add(terrainMesh(L.mid, midH, midT, { fade: 0.18, hole: inner(L.near, 0.3), lake: true, order: 1, lift: 0.05, gain: 0.84, lakeMask: midLake }));
-  const near = terrainMesh(L.near, nearH, nearT, { fade: 0.15, order: 2, lift: 0.08, gain: 0.86, hi: true });
+  world.add(terrainMesh(L.mid, midH, midT, { fade: 0.18, hole: inner(L.near, 0.045), lake: true, order: 1, lift: 0.05, gain: 0.84, lakeMask: midLake }));
+  const near = terrainMesh(L.near, nearH, nearT, { fade: 0.025, order: 2, lift: 0.08, gain: 0.86, hi: true });
   near.receiveShadow = true;
   world.add(near);
   shadowsDirty();
