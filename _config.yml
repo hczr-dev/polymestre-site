@@ -2,3 +2,5 @@ exclude:
   - PRODUCT.md
   - DESIGN.md
   - geo/bake.py
+  - geo/trees.py
+  - geo/buildings.py

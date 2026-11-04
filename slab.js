@@ -9,7 +9,7 @@
 import * as THREE from "three";
 import { Sky } from "three/addons/objects/Sky.js";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
-import { mergeVertices } from "three/addons/utils/BufferGeometryUtils.js";
+import { mergeVertices, mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 
 const canvas = document.getElementById("slab");
 const root = document.documentElement;
@@ -112,7 +112,7 @@ function terrainMaterial(tex, opts) {
         // Le lac : là où l'image est au niveau de l'eau, sa couleur (le rivage suit la photo).
         float blueish = smoothstep(0.0, 0.05, diffuseColor.b - diffuseColor.r + 0.02) * smoothstep(-0.02, 0.03, diffuseColor.b - diffuseColor.g);
         float wet = (1.0 - smoothstep(uLakeY + 4.0, uLakeY + 9.0, vWorld.y)) * blueish;
-        diffuseColor.rgb = mix(diffuseColor.rgb, uWater, wet * 0.9);
+        diffuseColor.rgb = mix(diffuseColor.rgb, uWater, smoothstep(0.15, 0.6, wet));
         float lum = dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114));
         vec3 plan = mix(vec3(lum), diffuseColor.rgb, 0.55);
         plan = mix(plan, uPaper, 0.32);
@@ -407,6 +407,29 @@ const treesReady = loadBin("geo/trees.bin", Float32Array).then((a) => {
   wake();
 });
 
+// Les bâtiments du campus et des environs (OpenStreetMap) : des volumes blancs de maquette.
+const massing = new THREE.MeshStandardMaterial({ color: "#f3f2ee", roughness: 0.85 });
+const buildingsReady = loadBin("geo/buildings.bin", Float32Array).then((a) => {
+  const geos = [];
+  for (let i = 0; i < a.length;) {
+    const n = a[i], h = a[i + 1], base = a[i + 2];
+    const pts = [];
+    for (let k = 0; k < n; k++) pts.push(new THREE.Vector2(a[i + 3 + 2 * k], -a[i + 4 + 2 * k]));
+    i += 3 + 2 * n;
+    if (THREE.ShapeUtils.area(pts) === 0) continue;
+    const g = new THREE.ExtrudeGeometry(new THREE.Shape(pts), { depth: Math.max(h, 0.4) + 0.4, bevelEnabled: false });
+    g.rotateX(-Math.PI / 2);
+    g.translate(0, base - 0.4, 0);
+    g.deleteAttribute("uv");
+    geos.push(g);
+  }
+  const mesh = new THREE.Mesh(mergeGeometries(geos), massing);
+  mesh.castShadow = mesh.receiveShadow = true;
+  treeGroup.add(mesh);
+  shadowsDirty();
+  wake();
+});
+
 const groundReady = (async () => {
   const meta = await (await fetch("geo/meta.json")).json();
   const L = meta.layers;
@@ -517,57 +540,6 @@ const PW = 0.716, PH = 1.47, PR = 0.112, PD = 0.05, BEV = 0.012;
 const phoneScreen = screenPair(PW - 0.05, PH - 0.05, PR - 0.022, PD / 2 + BEV + 0.0012, phone);
 devCam.add(phone);
 
-const aluminium = new THREE.MeshPhysicalMaterial({ color: "#c9cbcf", metalness: 1, roughness: 0.3, clearcoat: 0.25, envMapIntensity: 1.6 });
-const darkAlu = new THREE.MeshPhysicalMaterial({ color: "#8d9095", metalness: 1, roughness: 0.4, envMapIntensity: 1.2 });
-const keyMat = new THREE.MeshStandardMaterial({ color: "#1d1e21", roughness: 0.55, metalness: 0.1 });
-const wellMat = new THREE.MeshStandardMaterial({ color: "#2b2d31", roughness: 0.7 });
-const padMat = new THREE.MeshPhysicalMaterial({ color: "#bfc1c5", metalness: 0.4, roughness: 0.18, clearcoat: 1, envMapIntensity: 1.6 });
-const laptop = new THREE.Group();
-const LW = 2.3, LD = 1.58, SW = LW - 0.12, SH = SW * 0.625;
-const lid = new THREE.Group();
-{
-  const base = new THREE.Mesh(new RoundedBoxGeometry(LW, 0.06, LD, 5, 0.028), aluminium);
-  base.position.y = 0.03;
-  laptop.add(base);
-  const well = new THREE.Mesh(new THREE.PlaneGeometry(LW * 0.88, LD * 0.47), wellMat);
-  well.rotation.x = -Math.PI / 2; well.position.set(0, 0.0605, -LD * 0.13);
-  laptop.add(well);
-  const pitch = LW * 0.86 / 14, kd = pitch * 0.84;
-  const keys = [];
-  [[14, 0.62], [14, 1], [14, 1], [13, 1], [12, 1]].forEach(([n, hScale], r) => {
-    const z = -LD * 0.13 - LD * 0.2 + r * pitch * (r === 0 ? 0.8 : 1) + (r > 0 ? -pitch * 0.2 : 0);
-    const wide = (LW * 0.86 - (n - 1) * pitch * 0.16) / n;
-    for (let i = 0; i < n; i++) keys.push({ x: -LW * 0.43 + wide / 2 + i * (wide + pitch * 0.16), z, w: wide, d: kd * hScale });
-  });
-  const lastZ = keys[keys.length - 1].z + pitch;
-  keys.push({ x: -0.08, z: lastZ, w: pitch * 5.6, d: kd });
-  for (let k = 0; k < 3; k++) keys.push({ x: -LW * 0.43 + pitch * 0.5 + k * pitch, z: lastZ, w: pitch * 0.84, d: kd });
-  for (let k = 0; k < 3; k++) keys.push({ x: LW * 0.43 - pitch * 2.5 + k * pitch, z: lastZ, w: pitch * 0.84, d: kd });
-  const keyMesh = new THREE.InstancedMesh(new RoundedBoxGeometry(1, 0.016, 1, 2, 0.004), keyMat, keys.length);
-  keys.forEach((kk, i) => keyMesh.setMatrixAt(i, m4.compose(v3.set(kk.x, 0.068, kk.z), q.identity(), s3.set(kk.w, 1, kk.d))));
-  laptop.add(keyMesh);
-  const pad = new THREE.Mesh(new RoundedBoxGeometry(LW * 0.36, 0.004, LD * 0.27, 3, 0.002), padMat);
-  pad.position.set(0, 0.061, LD * 0.29);
-  laptop.add(pad);
-  const hinge = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, LW * 0.78, 24), darkAlu);
-  hinge.rotation.z = Math.PI / 2; hinge.position.set(0, 0.06, -LD / 2 + 0.01);
-  laptop.add(hinge);
-  const lidH = SH + 0.14;
-  const shell = new THREE.Mesh(new RoundedBoxGeometry(LW, lidH, 0.03, 5, 0.012), aluminium);
-  shell.position.set(0, lidH / 2, -0.015);
-  const bezel = new THREE.Mesh(new THREE.ShapeGeometry(roundedRect(LW - 0.024, lidH - 0.024, 0.05), 16), blackGlass);
-  bezel.position.set(0, lidH / 2, 0.0008);
-  const notch = new THREE.Mesh(new THREE.ShapeGeometry(roundedRect(0.2, 0.05, 0.016), 12), blackGlass);
-  notch.position.set(0, lidH / 2 + SH / 2 + 0.002, 0.004);
-  lid.add(shell, bezel, notch);
-  lid.position.set(0, 0.06, -LD / 2 + 0.01);
-  lid.rotation.x = -0.28;
-  laptop.add(lid);
-  laptop.userData.lidH = lidH;
-}
-const laptopScreen = screenPair(SW, SH, 0.012, 0.0022, lid);
-for (const m of [laptopScreen.a, laptopScreen.b, laptopScreen.g]) m.position.y = laptop.userData.lidH / 2 - 0.02;
-devCam.add(laptop);
 
 // ==========================================================================================
 // Thème : le jour, ou l'heure bleue (le bâtiment éclairé de l'intérieur)
@@ -590,6 +562,7 @@ function applyTheme() {
   plainMat.color.set(dark ? "#10161c" : "#3f5640");
   paper.value.set(dark ? "#20252c" : "#e3e3df");
   concrete.color.set(dark ? "#6a7079" : "#f2f1ed");
+  massing.color.set(dark ? "#5b616a" : "#f3f2ee");
   interiorFloor.emissiveIntensity = dark ? 0.9 : 0.12;
   ceiling.emissiveIntensity = dark ? 0.7 : 0.18;
   glassUniforms.glow.value = dark ? 0.55 : 0;
@@ -608,19 +581,18 @@ function applyTheme() {
 // ==========================================================================================
 const D = (x, y, d, ry, rx, screen, on = 1) => ({ x, y, d, ry, rx, screen, on });
 const OFF_PHONE = D(0.45, -1.6, 5.4, -0.3, 0.2, null, 0);
-const OFF_LAPTOP = D(0.4, -1.8, 7.5, -0.3, 0.3, null, 0);
-const STUDY = (screen) => D(0.36, -0.02, 6.4, -0.36, 0.3, screen);
 const STOPS = {
-  hero: { pos: [-18, 19, 40], look: [2, 0.5, -4], shift: 0.24, phone: D(0.66, -0.1, 5.8, -0.5, 0.06, "iphone-today"), laptop: OFF_LAPTOP },
-  import: { pos: [-27, 7, 19], look: [-8, 1, -1], shift: 0, phone: D(0.46, -0.02, 5.0, -0.26, 0.02, "iphone-courses"), laptop: OFF_LAPTOP },
-  heures: { pos: [-7, 10, 26], look: [2, 1.6, -3], shift: 0, phone: { ...OFF_PHONE, x: -0.45 }, laptop: D(-0.42, -0.1, 7.2, 0.42, 0.36, "windows-stats") },
-  etude: { pos: [17.5, 2.0, 2.5], look: [8, 1.2, 1.5], shift: 0, phone: OFF_PHONE, laptop: STUDY("mac-study-exercise") },
-  claude: { pos: [5.5, 2.4, -17.5], look: [0, 1.4, -6.5], shift: 0, phone: OFF_PHONE, laptop: STUDY("mac-study-claude") },
-  calcul: { pos: [-19, 2.2, -9], look: [-9, 1.2, -4], shift: 0, phone: OFF_PHONE, laptop: STUDY("mac-study-calc") },
-  cours: { pos: [-14, 3.2, 17], look: [-6, 1.2, 6], shift: 0, phone: OFF_PHONE, laptop: STUDY("mac-study-revision") },
-  groupes: { pos: [24, 11, 18], look: [8, 0.8, -1], shift: 0, phone: D(-0.46, -0.02, 5.0, 0.32, 0.02, "iphone-groups"), laptop: OFF_LAPTOP },
-  partout: { pos: [31, 7, -6], look: [6, 1.4, -6], shift: 0, phone: D(0.68, -0.18, 4.6, -0.36, 0.04, "iphone-today"), laptop: D(0.38, 0.02, 8.2, -0.3, 0.32, "windows-today") },
-  plan: { pos: [0.01, 58, 9], look: [0, 0, -1], shift: 0, phone: OFF_PHONE, laptop: OFF_LAPTOP },
+  hero: { pos: [-18, 19, 40], look: [2, 0.5, -4], shift: 0.24, phone: D(0.66, -0.1, 5.8, -0.5, 0.06, "iphone-today") },
+  today: { pos: [-34, 16, 26], look: [-2, 0.4, -2], shift: 0, phone: OFF_PHONE },
+  import: { pos: [28, 10, 24], look: [2, 0.6, 0], shift: 0, phone: OFF_PHONE },
+  etude: { pos: [-5, 2.4, 16.5], look: [3, 1.1, 4], shift: 0, phone: OFF_PHONE },
+  exercise: { pos: [8, 30, 26], look: [0, 0, -2], shift: 0, phone: OFF_PHONE },
+  claude: { pos: [32, 6, -6], look: [6, 1, -4], shift: 0, phone: OFF_PHONE },
+  calc: { pos: [-30, 5.5, -10], look: [-6, 1, -2], shift: 0, phone: OFF_PHONE },
+  hours: { pos: [-20, 34, 34], look: [0, 0, -8], shift: 0, phone: OFF_PHONE },
+  groups: { pos: [28, 12, 20], look: [4, 0.6, -2], shift: 0, phone: OFF_PHONE },
+  everywhere: { pos: [6, 7, 30], look: [0, 1, -4], shift: -0.2, phone: D(-0.62, -0.08, 5.6, 0.48, 0.06, "iphone-today") },
+  plan: { pos: [0.01, 58, 9], look: [0, 0, -1], shift: 0, phone: OFF_PHONE },
 };
 const INSIDE = new Set([]);
 const sections = [...document.querySelectorAll("[data-cam]")];
@@ -629,8 +601,8 @@ const measure = () => { centers = sections.map((s) => { const r = s.getBoundingC
 const camPos = new THREE.Vector3(...STOPS.hero.pos), camLook = new THREE.Vector3(...STOPS.hero.look);
 const wantPos = camPos.clone(), wantLook = camLook.clone();
 let shiftNow = STOPS.hero.shift, shiftWant = shiftNow, liftNow = 0, liftWant = 0;
-const devState = { phone: { ...STOPS.hero.phone }, laptop: { ...STOPS.hero.laptop } };
-const devWant = { phone: { ...STOPS.hero.phone }, laptop: { ...STOPS.hero.laptop } };
+const devState = { phone: { ...STOPS.hero.phone } };
+const devWant = { phone: { ...STOPS.hero.phone } };
 const ease = (t) => t * t * (3 - 2 * t);
 const portrait = () => camera.aspect < 1.05;
 
@@ -651,14 +623,11 @@ function scrollTarget() {
   shiftWant = portrait() ? 0 : lerp(A.shift, B.shift);
   liftWant = portrait() ? 0.2 : 0;
   const heroWeight = (ia === "hero" ? 1 - t : 0) + (ib === "hero" ? t : 0);
-  for (const name of ["phone", "laptop"]) {
-    const a = A[name], b = B[name], w = devWant[name];
+  {
+    const a = A.phone, b = B.phone, w = devWant.phone;
     for (const k of ["x", "y", "d", "ry", "rx", "on"]) w[k] = lerp(a[k], b[k]);
     w.screen = (t < 0.5 ? a.screen : b.screen) ?? a.screen ?? b.screen;
-    if (portrait()) {
-      if (name === "phone") Object.assign(w, { x: 0.22, y: 0.5, d: 10.5, ry: -0.36, rx: 0.08, on: heroWeight, screen: "iphone-today" });
-      else w.on = 0;
-    }
+    if (portrait()) Object.assign(w, { x: 0.22, y: 0.5, d: 10.5, ry: -0.36, rx: 0.08, on: heroWeight, screen: "iphone-today" });
   }
 }
 
@@ -670,9 +639,9 @@ const INTRO = {
   look: [[-2600, 0, -1800], [-1800, 0, -2300], [200, 0, -480], [0, 0, -5], [0, 0.6, -2], [0, 0.8, 0], [0, 0.8, 0], [0, 0.6, -2]],
   duration: 14,
   beats: [
-    { at: 0, coords: "46,43° N · 6,52° E", place: "Le Léman, vu d'en haut" },
-    { at: 0.3, coords: "46,5191° N · 6,5668° E", place: "Lausanne · EPFL" },
-    { at: 0.5, coords: "46,5184° N · 6,5681° E", place: "Rolex Learning Center" },
+    { at: 0, coords: "46,43° N · 6,52° E", place: "Le Léman" },
+    { at: 0.3, coords: "46,52° N · 6,57° E", place: "Écublens, sur la rive nord" },
+    { at: 0.47, coords: "46,5184° N · 6,5681° E", place: "Le Rolex Learning Center" },
   ],
 };
 const introPos = new THREE.CatmullRomCurve3(INTRO.pos.map((p) => new THREE.Vector3(...p)), false, "centripetal");
@@ -783,9 +752,6 @@ function frame() {
     }
     if (approach(devState.phone, devWant.phone, k)) moving = true;
   }
-  if (!intro.active || !intro.started) {
-    if (approach(devState.laptop, devWant.laptop, k)) moving = true;
-  }
   if (Math.abs(tiltNow.x - tilt.x) + Math.abs(tiltNow.y - tilt.y) > 1e-4) {
     tiltNow.x += (tilt.x - tiltNow.x) * k * 0.6; tiltNow.y += (tilt.y - tiltNow.y) * k * 0.6;
     moving = true;
@@ -800,11 +766,8 @@ function frame() {
   camera.lookAt(camLook);
 
   if (devWant.phone.screen) showScreen(phoneScreen, devWant.phone.screen);
-  if (devWant.laptop.screen) showScreen(laptopScreen, devWant.laptop.screen);
   if (stepScreen(phoneScreen, k)) moving = true;
-  if (stepScreen(laptopScreen, k)) moving = true;
   placeDevice(phone, devState.phone);
-  placeDevice(laptop, devState.laptop);
 
   devCam.aspect = camera.aspect;
   devCam.setViewOffset(innerWidth, innerHeight, -shiftNow * innerWidth, liftNow * innerHeight, innerWidth, innerHeight);
@@ -813,7 +776,7 @@ function frame() {
   const t0 = performance.now();
   renderer.autoClear = true;
   renderer.render(scene, camera);
-  if (phone.visible || laptop.visible) {
+  if (phone.visible) {
     renderer.autoClear = false;
     renderer.clearDepth();
     renderer.render(deviceScene, devCam);
@@ -830,7 +793,7 @@ function frame() {
 
 function snap() {
   camPos.copy(wantPos); camLook.copy(wantLook); shiftNow = shiftWant; liftNow = liftWant;
-  for (const n of ["phone", "laptop"]) Object.assign(devState[n], devWant[n]);
+  Object.assign(devState.phone, devWant.phone);
 }
 function resize() {
   renderer.setSize(innerWidth, innerHeight, false);
@@ -865,7 +828,7 @@ if (intro.active && scrollY < 40) {
   camPos.copy(introPos.getPoint(0)); camLook.copy(introLook.getPoint(0)); shiftNow = 0; liftNow = 0;
   style.value = 0; building.scale.y = 0.02; treeGroup.scale.y = 0.02; devState.phone.on = 0;
   const giveUp = setTimeout(() => { intro.active = false; finishInstantly(); }, 10000);
-  Promise.all([groundReady, treesReady.catch(() => {})]).then(() => {
+  Promise.all([groundReady, treesReady.catch(() => {}), buildingsReady.catch(() => {})]).then(() => {
     clearTimeout(giveUp);
     if (!intro.active) return;
     renderer.compile(scene, camera);
