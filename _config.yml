@@ -1,3 +1,4 @@
 exclude:
   - PRODUCT.md
   - DESIGN.md
+  - geo/bake.py
