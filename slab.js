@@ -23,24 +23,31 @@ const darkQuery = matchMedia("(prefers-color-scheme: dark)");
 
 let renderer;
 try {
-  renderer = new THREE.WebGLRenderer({ canvas, antialias: devicePixelRatio < 1.5, alpha: false, powerPreference: "high-performance" });
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: small || devicePixelRatio < 1.5, alpha: false, powerPreference: "high-performance" });
 } catch {
   root.classList.add("no-webgl", "intro-done");
   throw new Error("WebGL indisponible");
 }
-const DPR_HI = Math.min(devicePixelRatio, 2);
+const DPR_HI = Math.min(devicePixelRatio, small ? 1.5 : 2);
 // Le canevas garde une taille fixe : le réallouer à chaque arrêt coûte plus que dessiner. En mouvement,
 // la scène passe par une image plus petite, agrandie à l'écran (voir fast) ; l'iPhone reste net.
 let dprNow = DPR_HI;
 let dprFast = Math.min(devicePixelRatio, small ? 1 : 1.35);
 renderer.setPixelRatio(dprNow);
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.type = small ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
 renderer.shadowMap.autoUpdate = false;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 let stale = true;                                    // l'image affichée n'est plus à jour
-const shadowsDirty = () => { renderer.shadowMap.needsUpdate = true; stale = true; };
+let shadowHold = false;                              // pendant la descente : pas d'ombres à recalculer
+const shadowsDirty = () => { stale = true; if (!shadowHold) renderer.shadowMap.needsUpdate = true; };
+// Les téléphones ont leurs propres données, plus légères (geo/mobile.py).
+const SET = small ? "geo/m/" : "geo/";
+// Sur téléphone, le campus ne se charge qu'une fois le relief arrivé : il ne lui dispute pas le réseau.
+// (Sur ordinateur tout part d'un coup, et l'intro attend tout : aucune saccade en vol.)
+let groundArrived;
+const groundGate = small ? new Promise((resolve) => { groundArrived = resolve; }) : Promise.resolve();
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(32, 1, 0.05, 400000);
@@ -141,7 +148,7 @@ function terrainMaterial(tex, opts) {
 function terrainMesh(layer, heights, tex, opts) {
   const size = layer.size / UNIT, g = layer.grid;
   // Le relief fin : un sommet sur deux suffit sous la photo (un quart des triangles).
-  const stride = g > 400 ? 2 : 1;
+  const stride = g > 400 || (small && (g - 1) % 2 === 0) ? 2 : 1;
   const geo = new THREE.PlaneGeometry(size, size, (g - 1) / stride, (g - 1) / stride);
   geo.rotateX(-Math.PI / 2);
   const p = geo.attributes.position, uv = geo.attributes.uv;
@@ -235,11 +242,11 @@ campusMat.onBeforeCompile = (shader) => {
       float gGlass = 0.0, gGloss = 0.0, gLit = 0.0;
       vec3 gTilt = vec3(0.0);
       float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-      float noise(vec2 p) {
+      ${small ? "float noise(vec2 p) { return 0.5; }" : `float noise(vec2 p) {
         vec2 i = floor(p), f = fract(p);
         f = f * f * (3.0 - 2.0 * f);
         return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
-      }
+      }`}
       float band(float t, float a, float b, float w) { return smoothstep(a - w, a + w, t) * (1.0 - smoothstep(b - w, b + w, t)); }`)
     .replace("#include <color_fragment>", `#include <color_fragment>
       vec3 up = normalize(vUp);
@@ -361,9 +368,11 @@ campusMat.onBeforeCompile = (shader) => {
     .replace("#include <metalnessmap_fragment>", "#include <metalnessmap_fragment>\nmetalnessFactor = mix(metalnessFactor, 0.75, gGloss);")
     .replace("#include <emissivemap_fragment>", "#include <emissivemap_fragment>\ntotalEmissiveRadiance += vec3(1.0, 0.64, 0.32) * gLit * 0.34;");
 };
-const draco = new DRACOLoader().setDecoderPath("https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/libs/draco/");
+const draco = new DRACOLoader().setDecoderPath("geo/draco/");
+// Compile hors du fil principal avant d'entrer en scène : rien ne saccade pendant la descente.
+const warm = (object) => renderer.compileAsync(object, camera, scene).catch(() => {});
 const styleMap = { value: null };
-const buildingsReady = new Promise((resolve, reject) => draco.load("geo/campus.drc", async (geo) => {
+const buildingsReady = groundGate.then(() => new Promise((resolve, reject) => draco.load(`${SET}campus.drc`, async (geo) => {
   const styles = await loadTex("geo/styles.png");
   styles.colorSpace = THREE.NoColorSpace;
   styles.magFilter = styles.minFilter = THREE.NearestFilter;
@@ -380,12 +389,13 @@ const buildingsReady = new Promise((resolve, reject) => draco.load("geo/campus.d
     shader.vertexShader = shader.vertexShader.replace("#include <begin_vertex>", `#include <begin_vertex>
       if (abs(position.x) < 14.2 && abs(position.z) < 10.45) transformed.y -= 0.3;`);
   };
+  await warm(mesh);
   campus.add(mesh);
   draco.dispose();
   shadowsDirty();
   wake();
   resolve(true);
-}, undefined, reject));
+}, undefined, reject)));
 
 // Les arbres : un tronc et une couronne de plusieurs masses, à la taille réelle de chacun. Trois
 // niveaux de détail : le feuillage complet près du bâtiment, une boule irrégulière au loin.
@@ -423,12 +433,12 @@ function crownGeometry(detail, lobes) {
   return geo;
 }
 const LOBES = [[0, 0.12, 0, 0.72], [0.46, -0.08, 0.16, 0.52], [-0.42, -0.04, 0.3, 0.54], [0.08, -0.06, -0.48, 0.54], [-0.3, 0.1, -0.34, 0.46], [0.34, 0.2, -0.26, 0.44], [-0.1, 0.52, 0.02, 0.46], [0.2, 0.42, 0.28, 0.4]];
-const treesReady = loadBin("geo/trees.bin", Float32Array).then((a) => {
+const treesReady = groundGate.then(() => loadBin(`${SET}trees.bin`, Float32Array)).then(async (a) => {
   const n = a.length / 4;
   const tiers = [
-    { within: 30, geo: crownGeometry(small ? 1 : 2, LOBES), list: [] },
-    { within: 80, geo: crownGeometry(1, LOBES.slice(0, 5)), list: [] },
-    { within: Infinity, geo: crownGeometry(1, [[0, 0, 0, 0.98]]), list: [] },
+    { within: 30, geo: crownGeometry(small ? 1 : 2, small ? LOBES.slice(0, 5) : LOBES), list: [] },
+    { within: 80, geo: crownGeometry(1, LOBES.slice(0, small ? 3 : 5)), list: [] },
+    { within: Infinity, geo: crownGeometry(small ? 0 : 1, [[0, 0, 0, 0.98]]), list: [] },
   ];
   for (let i = 0; i < n; i++) tiers.find((t) => Math.hypot(a[i * 4], a[i * 4 + 1]) < t.within).list.push(i);
   const trunks = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.03, 0.06, 1, 6), trunkMat, tiers[0].list.length + tiers[1].list.length);
@@ -447,9 +457,11 @@ const treesReady = loadBin("geo/trees.bin", Float32Array).then((a) => {
     });
     crowns.castShadow = true;
     crowns.receiveShadow = level < 2;
+    await warm(crowns);
     campus.add(crowns);
   }
   trunks.castShadow = true;
+  await warm(trunks);
   campus.add(trunks);
   shadowsDirty();
   wake();
@@ -777,10 +789,8 @@ rolexGlassMat.onBeforeCompile = (shader) => {
 const FASCIA = 0.05, SLAB = 0.12, RECESS = 0.04;   // la coupe du Rolex, sous le toit (unités)
 const facadeGroup = new THREE.Group();
 facadeGroup.visible = false;
-campus.add(facadeGroup);
 const rolexParts = new THREE.Group();
-campus.add(rolexParts);
-const facadesReady = Promise.all([loadBin("geo/walls.bin", Float32Array), loadBin("geo/rolex.bin", Float32Array), loadBin("geo/canopies.bin", Float32Array)]).then(([a, rolex, roofs]) => {
+const facadesReady = groundGate.then(() => Promise.all([loadBin(`${SET}walls.bin`, Float32Array), loadBin("geo/rolex.bin", Float32Array), loadBin("geo/canopies.bin", Float32Array)])).then(async ([a, rolex, roofs]) => {
   const HI = small ? 0 : 44, LO = small ? 95 : 135;
   const place = new THREE.Matrix4(), scaleM = new THREE.Matrix4(), turn = new THREE.Matrix4();
   const lists = new Map();                            // clé → { kit, matrices, colors }
@@ -971,7 +981,7 @@ const facadesReady = Promise.all([loadBin("geo/walls.bin", Float32Array), loadBi
       const mesh = new THREE.InstancedMesh(geo, mat, n);
       matrices.forEach((m, k) => mesh.setMatrixAt(k, m));
       if (mat === facadeMat) colors.forEach((c, k) => mesh.setColorAt(k, tint.set(c)));
-      mesh.castShadow = cast; mesh.receiveShadow = true;
+      mesh.castShadow = cast && !small; mesh.receiveShadow = !small;
       mesh.computeBoundingSphere();
       facadeGroup.add(mesh);
       triangles += n * geo.attributes.position.count / 3;
@@ -979,38 +989,55 @@ const facadesReady = Promise.all([loadBin("geo/walls.bin", Float32Array), loadBi
     add(kit.body, facadeMat, true);
     add(kit.glass, glassMat, false);
   }
+  facadeGroup.visible = true;
+  await warm(facadeGroup);
+  await warm(rolexParts);
   facadeGroup.visible = campus.scale.y >= 0.999;
+  campus.add(rolexParts, facadeGroup);
   shadowsDirty();
   wake();
 });
 
+// Le lac et le relief d'abord : sur téléphone l'intro part dès qu'ils sont là, le campus arrive pendant
+// la descente.
+let nearReady = null;
 const groundReady = (async () => {
-  const meta = await (await fetch("geo/meta.json")).json();
+  const meta = await (await fetch(`${SET}meta.json`)).json();
   const L = meta.layers;
-  const [farH, midH, nearH, farT, midT, nearT] = await Promise.all([
-    loadBin("geo/far.bin", Int16Array), loadBin("geo/mid.bin", Int16Array), loadBin("geo/near.bin", Int16Array),
-    loadTex("geo/far.webp"), loadTex("geo/mid.webp"), loadTex("geo/near.webp"),
+  const [farH, midH, farT, midT, farLake, midLake] = await Promise.all([
+    loadBin("geo/far.bin", Int16Array), loadBin("geo/mid.bin", Int16Array), loadTex(`${SET}far.webp`), loadTex(`${SET}mid.webp`),
+    loadTex("geo/far-lake.png"), loadTex("geo/mid-lake.png"),
   ]);
-  const [farLake, midLake] = await Promise.all([loadTex("geo/far-lake.png"), loadTex("geo/mid-lake.png")]);
   for (const t of [farLake, midLake]) t.colorSpace = THREE.NoColorSpace;
   const inner = (layer, margin) => new THREE.Vector4(layer.cx / UNIT, -layer.cz / UNIT, layer.size / UNIT / 2 * (1 - margin), layer.size / UNIT / 2 * (1 - margin));
-  nearPhoto.value = nearT;
   nearBox.value.set(L.near.cx / UNIT, L.near.cz / UNIT, L.near.size / UNIT, 0);
-  if (!small) Promise.all([loadTex("geo/campus-photo.webp"), fetch("geo/campus-photo.json").then((r) => r.json())]).then(([t, b]) => {
-    hiPhoto.value = t;
-    hiBox.value.set(b.x0, b.z0, b.x1, b.z1);
-    hasHi.value = 1;
-    stale = true;
-    wake();
-  }).catch(() => {});
+  const midHole = new THREE.Vector4(0, 0, 0, 0);       // ouvert quand la couche fine arrive
   world.add(terrainMesh(L.far, farH, farT, { fade: 0.16, hole: inner(L.mid, 0.36), lake: true, sink: true, lakeMask: farLake }));
-  world.add(terrainMesh(L.mid, midH, midT, { fade: 0.18, hole: inner(L.near, 0.045), lake: true, order: 1, lift: 0.05, gain: 0.84, lakeMask: midLake }));
-  const near = terrainMesh(L.near, nearH, nearT, { fade: 0.025, order: 2, lift: 0.08, gain: 0.86, hi: true });
-  near.receiveShadow = true;
-  world.add(near);
+  world.add(terrainMesh(L.mid, midH, midT, { fade: 0.18, hole: midHole, lake: true, order: 1, lift: 0.05, gain: 0.84, lakeMask: midLake }));
+  nearReady = groundGate.then(() => Promise.all([loadBin(`${SET}near.bin`, Int16Array), loadTex(`${SET}near.webp`)])).then(async ([nearH, nearT]) => {
+    nearPhoto.value = nearT;
+    const near = terrainMesh(L.near, nearH, nearT, { fade: 0.025, order: 2, lift: 0.08, gain: 0.86, hi: true });
+    near.receiveShadow = true;
+    await warm(near);
+    world.add(near);
+    midHole.copy(inner(L.near, 0.045));
+    shadowsDirty();
+    wake();
+    const sharpPhoto = () => Promise.all([loadTex(`${SET}campus-photo.webp`), fetch("geo/campus-photo.json").then((r) => r.json())]).then(([t, b]) => {
+      hiPhoto.value = t;
+      hiBox.value.set(b.x0, b.z0, b.x1, b.z1);
+      hasHi.value = 1;
+      stale = true;
+      wake();
+    }).catch(() => {});
+    // Sur téléphone, la photo fine vient en dernier, une fois tout le reste arrivé.
+    if (small) Promise.allSettled([buildingsReady, treesReady, facadesReady]).then(sharpPhoto); else sharpPhoto();
+  }).catch(() => {});
   shadowsDirty();
+  groundArrived?.();
   return true;
 })();
+groundReady.catch(() => groundArrived?.());
 
 // ==========================================================================================
 // Les appareils : l'app telle qu'elle est (captures avec des données d'exemple)
@@ -1244,7 +1271,7 @@ function introFrame(dt) {
   // Le bâtiment se lève vu de loin : les ombres ne sont recalculées qu'une fois debout.
   if (Math.abs(campus.scale.y - rise) > 1e-4) {
     campus.scale.y = rise;
-    if (rise >= 0.999) { facadeGroup.visible = true; shadowsDirty(); }
+    if (rise >= 0.999) { facadeGroup.visible = true; shadowHold = false; shadowsDirty(); }
   }
   devState.phone.on = ease(band01(u, 0.93, 1)) * devWant.phone.on;
   const beat = INTRO.beats.reduce((acc, b, i) => (u >= b.at ? i : acc), 0);
@@ -1293,12 +1320,15 @@ function placeDevice(group, s) {
 // rien retarder ; en mouvement, un rendu simple.
 let composer = null, aoPass = null;
 // En mouvement : une image plus petite, lissée, agrandie à l'écran.
-const fast = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 }));
-fast.addPass(new RenderPass(scene, camera));
-fast.addPass(new OutputPass());
-fast.setPixelRatio(dprFast);
-fast.setSize(innerWidth, innerHeight);
-import("n8ao").then(({ N8AOPass }) => {
+// (Sur téléphone, rien de tout ça : un rendu direct, moins de pixels, pas de passes.)
+const fast = small ? null : new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 }));
+if (fast) {
+  fast.addPass(new RenderPass(scene, camera));
+  fast.addPass(new OutputPass());
+  fast.setPixelRatio(dprFast);
+  fast.setSize(innerWidth, innerHeight);
+}
+if (!small) import("n8ao").then(({ N8AOPass }) => {
   composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: dprNow < 1.5 ? 4 : 0 }));
   composer.addPass(new RenderPass(scene, camera));
   aoPass = new N8AOPass(scene, camera, innerWidth, innerHeight);
@@ -1374,8 +1404,11 @@ function frame() {
   const sharp = !moving && wantSharp && composer;
   renderer.autoClear = true;
   if (sharp) { composer.render(); sharpDone = true; wantSharp = false; stale = false; }
-  else if (moving) fast.render();
-  else renderer.render(scene, camera);
+  else if (moving && fast) fast.render();
+  else {
+    renderer.render(scene, camera);
+    if (small && !moving) { sharpDone = true; stale = false; }
+  }
   if (phone.visible) {
     renderer.autoClear = false;
     renderer.clearDepth();
@@ -1387,10 +1420,16 @@ function frame() {
     lastFrame = now;
     if (gap < 200) {
       paceMs += (gap - paceMs) * 0.08;
-      if (paceMs > 24 && dprFast > 0.7 && ++slowFrames > 30) {
-        dprFast = Math.max(0.7, dprFast - 0.2);
-        fast.setPixelRatio(dprFast);
+      if (paceMs > 24 && ++slowFrames > 30) {
         slowFrames = 0; paceMs = 16;
+        if (fast && dprFast > 0.7) {
+          dprFast = Math.max(0.7, dprFast - 0.2);
+          fast.setPixelRatio(dprFast);
+        } else if (!fast && dprNow > 1) {
+          dprNow = Math.max(1, dprNow - 0.25);
+          renderer.setPixelRatio(dprNow);
+          renderer.setSize(innerWidth, innerHeight, false);
+        }
       }
     }
     wake();
@@ -1407,7 +1446,7 @@ function resize() {
   stale = true;
   renderer.setSize(innerWidth, innerHeight, false);
   composer?.setSize(innerWidth, innerHeight);
-  fast.setSize(innerWidth, innerHeight);
+  fast?.setSize(innerWidth, innerHeight);
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
   measure();
@@ -1439,15 +1478,13 @@ if (intro.active && scrollY < 40 && !location.hash) {
   camPos.copy(introPos.getPoint(0)); camLook.copy(introLook.getPoint(0)); shiftNow = 0; liftNow = 0;
   campus.scale.y = 0.02; facadeGroup.visible = false; devState.phone.on = 0;
   const giveUp = setTimeout(() => { intro.active = false; finishInstantly(); }, 10000);
-  Promise.all([groundReady, treesReady.catch(() => {}), buildingsReady.catch(() => {}), facadesReady.catch(() => {})]).then(async () => {
+  shadowHold = true;
+  const ready = small ? groundReady : groundReady.then(() => Promise.all([nearReady, treesReady.catch(() => {}), buildingsReady.catch(() => {}), facadesReady.catch(() => {})]));
+  ready.then(async () => {
     clearTimeout(giveUp);
     if (!intro.active) return;
-    // Tout se compile en tâche de fond avant le premier mouvement : pas d'à-coup en route.
-    facadeGroup.visible = true;
     await renderer.compileAsync(scene, camera).catch(() => {});
-    facadeGroup.visible = false;
     if (!intro.active) return;
-    shadowsDirty();
     intro.started = true;
     root.classList.remove("intro-wait");
     clock.getDelta();
@@ -1461,6 +1498,7 @@ if (intro.active && scrollY < 40 && !location.hash) {
 }
 function finishInstantly() {
   campus.scale.y = 1; facadeGroup.visible = true;
+  shadowHold = false;
   shadowsDirty();
   root.classList.add("intro-done");
   root.classList.remove("intro", "intro-wait");

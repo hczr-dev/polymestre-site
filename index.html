@@ -16,15 +16,6 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,300..800&display=swap">
 <link rel="stylesheet" href="site.css">
-<script type="importmap">
-{ "imports": {
-  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
-  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
-  "three/examples/jsm/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
-  "postprocessing": "https://cdn.jsdelivr.net/npm/postprocessing@6.36.4/build/index.js",
-  "n8ao": "https://cdn.jsdelivr.net/npm/n8ao@1.9.4/dist/N8AO.js"
-} }
-</script>
 </head>
 <body>
 <canvas id="slab" aria-hidden="true"></canvas>
@@ -36,7 +27,7 @@
 <p class="geo-credit">Images © swisstopo · Sentinel-2 cloudless 2020, EOX · bâtiments © swisstopo</p>
 
 <header class="top">
-  <a class="mark" href="/"><img src="icon.png" alt="" width="30" height="30">StudyTrack</a>
+  <a class="mark" href="/"><img src="logo-120.png" alt="" width="30" height="30">StudyTrack</a>
   <nav>
     <a href="#telecharger">Télécharger</a>
   </nav>
@@ -150,7 +141,7 @@
   <small class="credits">Images aériennes, bâtiments (swissBUILDINGS3D) et végétation 3D © swisstopo · Sentinel-2 cloudless 2020 par EOX IT Services (données Copernicus Sentinel modifiées), CC BY-NC-SA 4.0 · relief Terrain Tiles (Mapzen, AWS Open Data). Le Rolex Learning Center est une œuvre de SANAA ; la RTS (OFFICE Kersten Geers David Van Severen), absente des données, est reconstituée d'après les plans et coupes publiés par ses architectes, et les façades sont modélisées d'après des photos du campus.json">sources</a>, modules sous la même licence). Les captures de l'app utilisent des données d'exemple.</small>
 </footer>
 
-<script type="module" src="slab.js"></script>
+<script type="module" src="dist/slab.js"></script>
 <script src="get.js" defer></script>
 </body>
 </html>

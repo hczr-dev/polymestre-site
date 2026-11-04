@@ -72,7 +72,7 @@ for a_, off, (u0, u1, lo, hi) in out:
     x0, z0 = np.cos(a_ * np.radians(2)) * off + tx * u0, np.sin(a_ * np.radians(2)) * off + tz * u0
     x1, z1 = np.cos(a_ * np.radians(2)) * off + tx * u1, np.sin(a_ * np.radians(2)) * off + tz * u1
     rows.append((x0, z0, x1, z1, lo, hi, nx, nz, s, lo - terrain(mx, mz)))
-A = np.array(rows, dtype="<f4"); A.tofile(f"{GEO}/walls.bin")
+A = np.array([r for r in rows if r[8] != 0], dtype="<f4"); A.tofile(f"{GEO}/walls.bin")   # les bâtiments ordinaires n'ont pas de modules
 L = np.hypot(A[:, 2] - A[:, 0], A[:, 3] - A[:, 1]) * 6; H = (A[:, 5] - A[:, 4]) * 6
 print("murs", len(A), "Ko", A.nbytes // 1024)
 for s_ in np.unique(A[:, 8]):

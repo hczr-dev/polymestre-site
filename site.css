@@ -205,7 +205,7 @@ figure { margin: 0; }
 
 @media (max-width: 900px) {
   .bay, .bay.right, .bay.wide, .bay.right.wide { grid-template-columns: minmax(0, 1fr); min-height: auto; padding: 20svh var(--gutter) 16svh; gap: 32px; }
-  .bay::before, .bay.right::before { inset: 0; background: rgba(9, 11, 15, 0.6); }
+  .bay::before, .bay.right::before { inset: 0; background: linear-gradient(180deg, transparent, rgba(9, 11, 15, 0.62) 16%, rgba(9, 11, 15, 0.62) 84%, transparent); }
   .bay.right .panel, .bay.right figure { grid-column: 1; grid-row: auto; }
   .iphone { --w: min(78vw, 340px); }
   .columns { grid-template-columns: minmax(0, 1fr); border-top: none; }

@@ -12,3 +12,6 @@ exclude:
   - geo/style.py
   - geo/site.py
   - geo/walls.py
+  - geo/mobile.py
+  - build.sh
+  - slab.js
