@@ -2,7 +2,7 @@
 // dernière release (Mac et Windows dans la même), versions comprises.
 (function () {
   // Le lien public de la bêta TestFlight. Vide : le bouton iPhone demande l'accès par courriel.
-  var TESTFLIGHT = "";
+  var TESTFLIGHT = "https://testflight.apple.com/join/6kj3rHyM";
   var RELEASE_API = "https://api.github.com/repos/hchzr/studytrack-site/releases/latest";
 
   function set(id, prop, value) {
