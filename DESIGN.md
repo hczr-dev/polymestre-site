@@ -108,7 +108,17 @@ components:
     typography: "{typography.label}"
 ---
 
-# Design System: StudyTrack site
+#
+> **Mise à jour, novembre 2026.** Ce qui suit décrit la première direction ; le site a évolué.
+> La scène n'est plus une maquette : le campus vient de swissBUILDINGS3D et de la végétation 3D de
+> swisstopo, le sol de SWISSIMAGE à 0,2 m par pixel (ordinateurs seulement). Le Rolex Learning
+> Center garde sa vraie géométrie et sa coupe est dessinée dans le shader (rive, verre, dalle, vide
+> sous les arches). L'accueil pose le titre dans le ciel, le texte des sections est blanc sur une
+> ombre qui s'efface, sans panneau, et l'app se montre entière dans son appareil (iPhone, fenêtre
+> Mac, fenêtre Windows). Les ordinateurs gardent la version complète ; les téléphones ont des arbres
+> plus simples et pas de photo fine.
+
+ Design System: StudyTrack site
 
 ## Overview
 

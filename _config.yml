@@ -2,6 +2,9 @@ exclude:
   - PRODUCT.md
   - DESIGN.md
   - geo/bake.py
-  - geo/trees.py
-  - geo/buildings.py
   - geo/mask.py
+  - geo/crawl.py
+  - geo/bld.py
+  - geo/veg.py
+  - geo/place.py
+  - geo/photo.py

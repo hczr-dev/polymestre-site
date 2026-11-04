@@ -63,8 +63,8 @@ main, .top, .foot { position: relative; z-index: 1; }
   position: fixed; top: 0; left: 0; right: 0; z-index: 5;
   display: flex; align-items: center; justify-content: space-between;
   padding: 14px var(--gutter);
-  background: var(--bg);
-  border-bottom: 1px solid color-mix(in srgb, var(--rule) 70%, transparent);
+  color: #fff;
+  background: linear-gradient(180deg, rgba(9, 11, 15, 0.5), transparent);
 }
 .mark {
   display: inline-flex; align-items: center; gap: 10px;
@@ -74,19 +74,19 @@ main, .top, .foot { position: relative; z-index: 1; }
 .top nav { display: flex; gap: 6px; }
 .top nav a {
   font-stretch: 125%; font-size: 11.5px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase;
-  text-decoration: none; padding: 9px 12px; border: 1px solid transparent; color: var(--ink-2);
+  text-decoration: none; padding: 9px 12px; border: 1px solid rgba(255, 255, 255, 0.45); color: #fff;
 }
-.top nav a:hover { color: var(--ink); border-color: var(--rule); background: color-mix(in srgb, var(--concrete) 70%, transparent); }
+.top nav a:hover { background: rgba(255, 255, 255, 0.16); }
 
 /* Accueil */
 .hero {
   position: relative; isolation: isolate;
-  min-height: 100svh; display: flex; flex-direction: column; justify-content: center;
-  padding: 120px var(--gutter) 110px;
+  min-height: 100svh; display: flex; flex-direction: column; justify-content: flex-start;
+  padding: clamp(92px, 13svh, 130px) var(--gutter) 60px;
 }
 .hero h1 {
   font-size: clamp(3.1rem, 8.6vw, 6rem); line-height: 0.92; font-stretch: 112%; font-weight: 750;
-  letter-spacing: -0.04em; max-width: 9ch;
+  letter-spacing: -0.04em; max-width: 12ch;
 }
 .lede { font-size: clamp(18px, 1.7vw, 21px); line-height: 1.45; color: var(--ink-2); max-width: 27em; margin: 26px 0 30px; }
 .get { display: flex; flex-wrap: wrap; gap: 10px; }
@@ -108,36 +108,62 @@ main, .top, .foot { position: relative; z-index: 1; }
 .plat.you small { color: color-mix(in srgb, var(--bg) 72%, var(--ink)); }
 .fine { margin: 18px 0 0; font-size: 13px; color: var(--ink-3); }
 
-/* Les travées : un panneau de béton posé sur la dalle, et l'app à côté. */
+/* Les travées : le texte à même la scène, sur une ombre qui s'efface ; l'app dans son appareil. */
 .bay {
-  min-height: 110svh; display: grid; grid-template-columns: minmax(0, 34rem) minmax(0, 1fr);
-  align-items: center; gap: clamp(24px, 5vw, 80px); padding: 14svh var(--gutter);
+  position: relative; isolation: isolate;
+  min-height: 118svh; display: grid; grid-template-columns: minmax(0, 32rem) minmax(0, 1fr);
+  align-items: center; gap: clamp(24px, 5vw, 80px); padding: 12svh var(--gutter);
 }
-.bay.right { grid-template-columns: minmax(0, 1fr) minmax(0, 34rem); }
+.bay::before {
+  content: ""; position: absolute; inset: 0 34% 0 0; z-index: -1;
+  background: linear-gradient(90deg, rgba(9, 11, 15, 0.82), rgba(9, 11, 15, 0.62) 52%, transparent);
+  -webkit-mask-image: linear-gradient(180deg, transparent, #000 24%, #000 76%, transparent);
+  mask-image: linear-gradient(180deg, transparent, #000 24%, #000 76%, transparent);
+}
+.bay.right { grid-template-columns: minmax(0, 1fr) minmax(0, 32rem); }
+.bay.right::before { inset: 0 0 0 34%; background: linear-gradient(270deg, rgba(9, 11, 15, 0.82), rgba(9, 11, 15, 0.62) 52%, transparent); }
 .bay.right .panel { grid-column: 2; }
 .bay.right figure { grid-column: 1; grid-row: 1; }
-.panel {
-  background: var(--concrete); box-shadow: var(--shadow);
-  padding: clamp(26px, 3.4vw, 46px);
-}
-.panel h2 { font-size: clamp(1.75rem, 3vw, 2.6rem); line-height: 1.02; font-stretch: 108%; letter-spacing: -0.03em; margin-bottom: 18px; }
-.panel p { margin: 0 0 14px; color: var(--ink-2); font-size: 18px; line-height: 1.62; max-width: 34em; }
-.panel p:last-child { margin-bottom: 0; }
+.bay.wide { grid-template-columns: minmax(0, 25rem) minmax(0, 1fr); }
+.bay.right.wide { grid-template-columns: minmax(0, 1fr) minmax(0, 25rem); }
+.panel { color: #fff; }
+.panel h2 { font-size: clamp(2.1rem, 3.7vw, 3.4rem); line-height: 1; font-stretch: 108%; letter-spacing: -0.032em; margin-bottom: 18px; }
+.panel p { margin: 0; color: rgba(255, 255, 255, 0.86); font-size: 19px; line-height: 1.55; max-width: 28em; }
+.panel a { color: #fff; }
 figure { margin: 0; }
-figure { margin: 0; }
-/* Les captures en clair : seulement là où l'iPhone 3D ne suit pas le texte (téléphone, tablette). */
-/* L'app : une capture, propre, sans annotations. */
-.shot { justify-self: center; width: min(100%, 820px); margin: 0; }
-.bay.stack .shot { width: min(100%, 980px); }
-.shot.phone { width: min(100%, 340px); }
-.shot img { width: 100%; height: auto; border-radius: 14px; box-shadow: var(--shadow), 0 0 0 1px color-mix(in srgb, var(--rule) 70%, transparent); }
-.shot.phone img { border-radius: 30px; }
-.panel h2 { margin-bottom: 14px; }
-.panel p { font-size: 19px; }
-.panel h3 { font-size: clamp(1.5rem, 2.4vw, 2.1rem); line-height: 1.05; font-stretch: 108%; letter-spacing: -0.025em; margin-bottom: 16px; }
 
-.bay.stack { grid-template-columns: minmax(0, 1fr); justify-items: start; gap: 24px; }
-.bay.stack .shot { width: min(100%, 1100px); }
+/* L'app, entière, dans son appareil. */
+.device { justify-self: center; position: relative; }
+.device img { display: block; width: 100%; height: auto; }
+.iphone {
+  --w: min(100%, 40svh, 372px);
+  width: var(--w); padding: calc(var(--w) * 0.03); border-radius: calc(var(--w) * 0.155);
+  background: #08090b;
+  box-shadow: 0 0 0 1.5px #a8aaae, 0 0 0 3px #4b4d52, 0 50px 90px -34px rgba(0, 0, 0, 0.75), 0 18px 34px -18px rgba(0, 0, 0, 0.5);
+}
+.iphone img { border-radius: calc(var(--w) * 0.125); }
+.iphone::before {
+  content: ""; position: absolute; z-index: 1; top: calc(var(--w) * 0.058); left: 50%; translate: -50% 0;
+  width: 29%; height: calc(var(--w) * 0.085); border-radius: 99px; background: #08090b;
+}
+.mac, .win {
+  width: min(100%, 118svh * 0.74, 860px); overflow: hidden;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.14), 0 50px 90px -34px rgba(0, 0, 0, 0.75), 0 18px 34px -18px rgba(0, 0, 0, 0.5);
+}
+.win { width: min(100%, 980px); }
+.mac { border-radius: 13px; background: #15140f; }
+.win { border-radius: 9px; background: #f4efe4; }
+.bar { display: flex; align-items: center; height: 34px; padding: 0 14px; gap: 8px; }
+.bar i { width: 12px; height: 12px; border-radius: 50%; }
+.mac .bar i:nth-child(1) { background: #ff5f57; }
+.mac .bar i:nth-child(2) { background: #febc2e; }
+.mac .bar i:nth-child(3) { background: #28c840; }
+.win .bar { justify-content: flex-end; gap: 22px; padding-right: 16px; }
+.win .bar i { width: 10px; height: 1.5px; border-radius: 0; background: #5a564d; }
+.win .bar i:nth-child(2) { height: 10px; background: none; border: 1.5px solid #5a564d; }
+.win .bar i:nth-child(3) { position: relative; height: 10px; background: none; }
+.win .bar i:nth-child(3)::before, .win .bar i:nth-child(3)::after { content: ""; position: absolute; left: -2px; top: 4px; width: 14px; height: 1.5px; background: #5a564d; rotate: 45deg; }
+.win .bar i:nth-child(3)::after { rotate: -45deg; }
 
 /* Le plan : la caméra monte au-dessus de la dalle. */
 .plan { height: 80svh; }
@@ -180,8 +206,10 @@ figure { margin: 0; }
 .foot a:hover { color: var(--ink); text-decoration: underline; }
 
 @media (max-width: 900px) {
-  .bay, .bay.right { grid-template-columns: minmax(0, 1fr); min-height: auto; padding: 22svh var(--gutter) 18svh; gap: 28px; }
+  .bay, .bay.right, .bay.wide, .bay.right.wide { grid-template-columns: minmax(0, 1fr); min-height: auto; padding: 20svh var(--gutter) 16svh; gap: 32px; }
+  .bay::before, .bay.right::before { inset: 0; background: rgba(9, 11, 15, 0.6); }
   .bay.right .panel, .bay.right figure { grid-column: 1; grid-row: auto; }
+  .iphone { --w: min(78vw, 340px); }
   .columns { grid-template-columns: minmax(0, 1fr); border-top: none; }
   .columns article, .columns article + article { padding: 26px 0; border-left: none; border-top: 1px solid var(--rule); }
   .columns article:first-child { border-top: 1px solid var(--ink); }
@@ -189,7 +217,9 @@ figure { margin: 0; }
 @media (max-width: 560px) {
   .top nav a:last-child { display: none; }
   .panel p { font-size: 17px; }
-  .hero { padding-top: 96px; justify-content: flex-end; padding-bottom: 40px; }
+  .hero { padding-top: 96px; justify-content: flex-end; padding-bottom: 40px; color: #fff; }
+  .hero::before { content: ""; position: absolute; inset: 30% 0 0; z-index: -1; background: linear-gradient(180deg, transparent, rgba(9, 11, 15, 0.72) 34%, rgba(9, 11, 15, 0.84)); }
+  .hero .lede, .hero .fine { color: rgba(255, 255, 255, 0.88); }
   .get { flex-direction: column; }
   .plat { width: 100%; }
 }
@@ -226,17 +256,6 @@ figure { margin: 0; }
 .credits { flex-basis: 100%; font-size: 11.5px; color: var(--ink-3); line-height: 1.5; }
 @media (prefers-reduced-motion: reduce) {
   .hero > *, .top { transition: none; }
-}
-
-/* Le texte de l'accueil reste lisible sur la photo aérienne : un voile doux du côté du texte. */
-.hero::before {
-  content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
-  background: linear-gradient(90deg, color-mix(in srgb, var(--bg) 82%, transparent) 0%, color-mix(in srgb, var(--bg) 55%, transparent) 38%, transparent 62%);
-  transition: opacity 1s ease;
-}
-.intro:not(.intro-done) .hero::before { opacity: 0; }
-@media (max-width: 900px) {
-  .hero::before { background: linear-gradient(0deg, color-mix(in srgb, var(--bg) 88%, transparent) 0%, color-mix(in srgb, var(--bg) 60%, transparent) 45%, transparent 70%); }
 }
 
 @media (max-width: 760px) {
