@@ -27,7 +27,7 @@
 <canvas id="slab" aria-hidden="true"></canvas>
 <div class="intro-card" aria-hidden="true">
   <span class="coords">46,43° N · 6,52° E</span>
-  <span class="place">Le Léman</span>
+  <span class="place">Lac Léman</span>
 </div>
 <button class="skip" type="button" data-skip-intro>Passer l'intro</button>
 <p class="geo-credit">Images © swisstopo · Sentinel-2 cloudless 2020, EOX · bâtiments © OpenStreetMap</p>
@@ -35,15 +35,14 @@
 <header class="top">
   <a class="mark" href="/"><img src="icon.png" alt="" width="30" height="30">StudyTrack</a>
   <nav>
-    <a href="#etude">Mode étude</a>
     <a href="#telecharger">Télécharger</a>
   </nav>
 </header>
 
 <main>
   <section class="hero" data-cam="hero">
-    <h1>Moodle,<br>enfin rangé.</h1>
-    <p class="lede">StudyTrack rassemble tes cours EPFL au même endroit et te dit, chaque matin, ce qu'il te reste à faire.</p>
+    <h1>Tes cours EPFL, enfin au même endroit.</h1>
+    <p class="lede">Vidéos, séries, corrigés, horaire : StudyTrack va les chercher pour toi et te dit chaque jour ce qu'il reste à faire.</p>
     <div class="get" data-get>
       <a class="plat" data-platform="iphone" href="https://testflight.apple.com/join/6kj3rHyM">
         <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6.5" y="2.5" width="11" height="19" rx="2.6"/><path d="M10.5 18.5h3"/></svg>
@@ -58,7 +57,7 @@
         <span><b>Windows</b><small>10 et 11</small></span>
       </a>
     </div>
-    <p class="fine">Gratuit et sans pub. Fait par un étudiant de l'EPFL, sans lien officiel avec l'école.</p>
+    <p class="fine">Gratuit et sans pub · made with ❤️ by hczr</p>
   </section>
 
   <section class="bay" data-cam="today" id="aujourdhui">
@@ -67,13 +66,13 @@
       <p>En ouvrant l'app, tu vois combien tu as travaillé depuis lundi, ton prochain cours, et pour chaque matière ce qui t'attend cette semaine.</p>
       <p>Ce que tu as laissé passer les semaines d'avant ne disparaît pas. Il reste dans un coin, le temps que tu le rattrapes.</p>
     </div>
-    <figure class="shot phone">
+    <figure data-tour class="shot phone">
       <div class="frame">
         <img src="shots/f-today.webp" alt="L'écran Aujourd'hui sur iPhone, avec des données d'exemple." width="1000" height="1566" loading="lazy">
-        <span class="pin" style="--x:40%;--y:21%">1</span>
-        <span class="pin" style="--x:96%;--y:50%">2</span>
-        <span class="pin" style="--x:90%;--y:67%">3</span>
-        <span class="pin" style="--x:70%;--y:86%">4</span>
+        <span class="spot" style="--x:3%;--y:17%;--w:94%;--h:18%"></span>
+        <span class="spot" style="--x:3%;--y:45%;--w:94%;--h:9%"></span>
+        <span class="spot" style="--x:3%;--y:62%;--w:94%;--h:10%"></span>
+        <span class="spot" style="--x:3%;--y:75%;--w:94%;--h:25%"></span>
       </div>
       <ol class="notes">
         <li>Tes heures depuis lundi, à côté de ce que tes crédits prévoient.</li>
@@ -90,11 +89,11 @@
       <p>Tu te connectes une seule fois, avec ton compte EPFL et sur la page de l'école. StudyTrack passe ensuite dans chacun de tes cours, que ce soit sur Moodle, Botafogo, Courseware ou Ed, et range les vidéos, les séries et les corrigés dans la bonne semaine. Ton horaire IS-Academia arrive en même temps.</p>
       <p>Quand un assistant publie une série le soir, elle est là le lendemain matin.</p>
     </div>
-    <figure class="shot phone">
+    <figure data-tour class="shot phone">
       <div class="frame">
         <img src="shots/f-courses.webp" alt="La liste des cours sur iPhone, avec des données d'exemple." width="1000" height="1087" loading="lazy">
-        <span class="pin" style="--x:72%;--y:7%">1</span>
-        <span class="pin" style="--x:30%;--y:47%">2</span>
+        <span class="spot" style="--x:2%;--y:0%;--w:85%;--h:11%"></span>
+        <span class="spot" style="--x:2%;--y:25%;--w:96%;--h:75%"></span>
       </div>
       <ol class="notes">
         <li>La semaine du semestre où tu es, et tes crédits.</li>
@@ -106,22 +105,28 @@
   <section class="chapter" data-cam="etude" id="etude">
     <div class="panel wide">
       <h2>Le mode étude</h2>
-      <p>Quand tu t'assieds pour travailler, tu lances une session. L'écran se vide de tout le reste et ne garde que l'exercice, le cours qui va avec et un chrono. Sur Mac et sur Windows, tu peux même bloquer les autres applications jusqu'à la fin de la session.</p>
+      <p>C'est l'écran où tu fais tes séries. Tu choisis un cours, et StudyTrack ouvre l'exercice du jour en plein écran, avec tout ce qu'il faut pour avancer à portée de main. Une session se passe comme ça :</p>
+      <ol class="flow">
+        <li><b>Tu lances une session.</b> Un cours, une durée, et le chrono démarre. Sur Mac et Windows, tu peux bloquer les autres applications jusqu'à la fin.</li>
+        <li><b>Tu fais l'exercice.</b> L'énoncé est affiché comme sur le site du cours, et tu notes où tu en es.</li>
+        <li><b>Tu bloques ?</b> Le tuteur te donne un indice, pas la réponse.</li>
+        <li><b>Tu finis la série.</b> Il relit ta copie, note tes erreurs et prévoit ce que tu refais la semaine d'après.</li>
+      </ol>
     </div>
   </section>
 
   <section class="bay stack" data-cam="exercise" id="exercice">
     <div class="panel">
-      <h3>L'exercice, et rien d'autre</h3>
-      <p>L'énoncé s'affiche comme sur le site du cours, formules comprises. À côté, tu notes où tu en es, et l'exercice suivant attend juste en dessous.</p>
+      <h3>Pendant l'exercice</h3>
+      <p>À gauche, l'énoncé, formules comprises. À droite, ce que tu en penses : fait, juste, à refaire. Quand tu as fini, l'exercice suivant est déjà là.</p>
     </div>
-    <figure class="shot dark">
+    <figure data-tour class="shot dark">
       <div class="frame">
         <img src="shots/f-exercise.webp" alt="Un exercice d'Analyse I dans le mode étude sur Mac, avec des données d'exemple." width="1600" height="558" loading="lazy">
-        <span class="pin" style="--x:41%;--y:6%">1</span>
-        <span class="pin" style="--x:35%;--y:40%">2</span>
-        <span class="pin" style="--x:96%;--y:30%">3</span>
-        <span class="pin" style="--x:97%;--y:60%">4</span>
+        <span class="spot" style="--x:0%;--y:0%;--w:40%;--h:13%"></span>
+        <span class="spot" style="--x:1%;--y:22%;--w:63%;--h:46%"></span>
+        <span class="spot" style="--x:67%;--y:26%;--w:33%;--h:24%"></span>
+        <span class="spot" style="--x:67%;--y:50%;--w:30%;--h:22%"></span>
       </div>
       <ol class="notes">
         <li>Les exercices de la série.</li>
@@ -134,17 +139,17 @@
 
   <section class="bay right" data-cam="claude" id="tuteur">
     <div class="panel">
-      <h3>Un tuteur qui ne donne pas la réponse</h3>
+      <h3>Quand tu bloques, et à la fin</h3>
       <p>Si tu bloques, Claude te met sur la piste avec un indice, puis un autre si le premier ne suffit pas. La solution, seulement si tu la demandes.</p>
       <p>Une fois la série finie, il relit ta copie, note tes erreurs et te propose de refaire les exercices ratés la semaine suivante. Il passe par ton abonnement Claude, et si tu n'en as pas, un tuteur gratuit prend le relais.</p>
     </div>
-    <figure class="shot dark tall">
+    <figure data-tour class="shot dark tall">
       <div class="frame">
         <img src="shots/f-claude.webp" alt="Le bilan de Claude à la fin d'une série, avec des données d'exemple." width="899" height="1284" loading="lazy">
-        <span class="pin" style="--x:4%;--y:21%">1</span>
-        <span class="pin" style="--x:4%;--y:43%">2</span>
-        <span class="pin" style="--x:4%;--y:56%">3</span>
-        <span class="pin" style="--x:4%;--y:76%">4</span>
+        <span class="spot" style="--x:3%;--y:17%;--w:94%;--h:10%"></span>
+        <span class="spot" style="--x:8%;--y:36%;--w:80%;--h:9%"></span>
+        <span class="spot" style="--x:8%;--y:45%;--w:88%;--h:21%"></span>
+        <span class="spot" style="--x:8%;--y:66%;--w:88%;--h:14%"></span>
       </div>
       <ol class="notes">
         <li>Le bilan de la série, en une phrase.</li>
@@ -157,14 +162,14 @@
 
   <section class="bay" data-cam="calc" id="calcul">
     <div class="panel">
-      <h3>Une calculatrice qui trace</h3>
+      <h3>Et une calculatrice qui trace</h3>
       <p>Tu écris comme sur une feuille. Une fonction est tracée, une équation est résolue, et les nombres complexes ou les matrices passent aussi. Pas besoin d'ouvrir un autre site au milieu d'un exercice.</p>
     </div>
-    <figure class="shot dark">
+    <figure data-tour class="shot dark">
       <div class="frame">
         <img src="shots/f-calc.webp" alt="La calculatrice du mode étude avec deux courbes tracées." width="1500" height="1336" loading="lazy">
-        <span class="pin" style="--x:30%;--y:9%">1</span>
-        <span class="pin" style="--x:85%;--y:41%">2</span>
+        <span class="spot" style="--x:0%;--y:5%;--w:42%;--h:13%"></span>
+        <span class="spot" style="--x:43%;--y:5%;--w:56%;--h:90%"></span>
       </div>
       <ol class="notes">
         <li>Ce que tu as tapé.</li>
@@ -179,12 +184,12 @@
       <p>Deux heures en auditoire, ce n'est pas forcément deux heures de travail. C'est donc toi qui choisis ce qui compte : les cours où tu étais vraiment, les séances d'exercices, le temps passé sur tes séries.</p>
       <p>En fin de semaine, tu vois où tu en es par rapport à ce que tes crédits demandent. Pas de points, pas de trophées, seulement tes heures.</p>
     </div>
-    <figure class="shot">
+    <figure data-tour class="shot">
       <div class="frame">
         <img src="shots/f-hours.webp" alt="Le bilan de la semaine sur Windows, avec des données d'exemple." width="1600" height="1000" loading="lazy">
-        <span class="pin" style="--x:25%;--y:31%">1</span>
-        <span class="pin" style="--x:30%;--y:45%">2</span>
-        <span class="pin" style="--x:80%;--y:61%">3</span>
+        <span class="spot" style="--x:2%;--y:22%;--w:33%;--h:17%"></span>
+        <span class="spot" style="--x:2%;--y:48%;--w:38%;--h:13%"></span>
+        <span class="spot" style="--x:41%;--y:47%;--w:55%;--h:44%"></span>
       </div>
       <ol class="notes">
         <li>Ton temps d'étude cette semaine.</li>
@@ -200,17 +205,15 @@
       <p>Crée un groupe avec quelques amis de ta section. Vous voyez qui est en train de travailler et où chacun en est dans les séries.</p>
       <p>Une question sur un exercice part chiffrée, et seuls les membres du groupe peuvent la lire. Avec le chrono partagé, vous faites vos pauses en même temps, comme à la bibliothèque, mais depuis ta chambre.</p>
     </div>
-    <figure class="shot phone">
+    <figure data-tour class="shot phone">
       <div class="frame">
         <img src="shots/f-groups.webp" alt="L'avancement d'un groupe dans les séries, avec des données d'exemple." width="1000" height="1566" loading="lazy">
-        <span class="pin" style="--x:83%;--y:32%">1</span>
-        <span class="pin" style="--x:82%;--y:43%">2</span>
-        <span class="pin" style="--x:55%;--y:62%">3</span>
+        <span class="spot" style="--x:3%;--y:16%;--w:94%;--h:27%"></span>
+        <span class="spot" style="--x:3%;--y:50%;--w:94%;--h:47%"></span>
       </div>
       <ol class="notes">
-        <li>Les membres du groupe.</li>
-        <li>Qui a de l'avance sur toi.</li>
-        <li>Qui a terminé la série.</li>
+        <li>Le groupe, et qui a de l'avance sur toi.</li>
+        <li>Qui a fini la série, et où en sont les autres.</li>
       </ol>
     </figure>
   </section>
@@ -265,5 +268,6 @@
 
 <script type="module" src="slab.js"></script>
 <script src="get.js" defer></script>
+<script src="tour.js" defer></script>
 </body>
 </html>

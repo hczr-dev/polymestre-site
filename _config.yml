@@ -4,3 +4,4 @@ exclude:
   - geo/bake.py
   - geo/trees.py
   - geo/buildings.py
+  - geo/mask.py

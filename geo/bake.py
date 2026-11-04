@@ -84,7 +84,7 @@ def sampler(h, z, x0, y0):
 
 h10, tx10, ty10 = terrain(10, 4)
 coarse = sampler(h10, 10, tx10, ty10)
-h13, tx13, ty13 = terrain(13, 3)
+h13, tx13, ty13 = terrain(13, 4)
 fine = sampler(h13, 13, tx13, ty13)
 base = float(fine(np.array([GX19]), np.array([GY19]))[0])
 print("base elevation", round(base, 1))
@@ -101,9 +101,9 @@ def heights(meta, grid, sample):
 
 meta = {"base": base, "unit": 6.0, "layers": {}}
 for name, src, z, n, grid, samp, q, size in [
-    ("far", "eox", 11, 8, 257, coarse, 70, 2048),
-    ("mid", "swiss", 14, 8, 257, fine, 74, 2048),
-    ("near", "swiss", 18, 6, 97, fine, 74, 1536),
+    ("far", "eox", 12, 12, 321, coarse, 66, 3072),
+    ("mid", "swiss", 15, 12, 385, fine, 68, 3072),
+    ("near", "swiss", 18, 10, 161, fine, 72, 2560),
 ]:
     img, x0, y0 = mosaic(src, z, n)
     if img.width != size:
