@@ -11,3 +11,4 @@ exclude:
   - geo/alti.py
   - geo/style.py
   - geo/site.py
+  - geo/walls.py

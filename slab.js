@@ -244,21 +244,7 @@ campusMat.onBeforeCompile = (shader) => {
         // coupe : une rive mince, du verre sur toute la hauteur et de fins montants sombres, la
         // dalle de béton, le vide sous les arches.
         top = max(top, uRoof * 0.93);
-        float mull = 1.0 - smoothstep(0.012, 0.012 + wr, abs(fract(run / 0.4) - 0.5) * 0.4);
-        mull *= 1.0 - smoothstep(0.05, 0.16, wr);
-        float isGlass = band(below, 0.05, 0.6, wy);
-        float isSlab = band(below, 0.6, 0.72, wy);
-        float paneId = floor(run / 0.4);
-        float pr = hash(vec2(paneId, 5.0));
-        vec3 glass = mix(vec3(0.1, 0.13, 0.15), vec3(0.27, 0.26, 0.23), smoothstep(0.6, 0.08, below)) * (0.86 + 0.28 * pr);
-        wall = uRoof * 0.92;
-        wall = mix(wall, mix(glass, vec3(0.035, 0.038, 0.042), mull), isGlass);
-        wall = mix(wall, uRoof * 0.62, isSlab);
-        wall = mix(wall, vec3(0.09, 0.09, 0.095), step(0.72, below));
-        gGlass = isGlass * (1.0 - mull);
-        gGloss = gGlass;
-        gTilt = (vec3(pr, hash(vec2(paneId, 9.0)), 0.5) - 0.5) * 0.05 * isGlass;
-        gLit = gGlass * uNight;
+        wall = vec3(0.09, 0.09, 0.095);
       } else {
         // Chaque famille de façade, relevée sur des photos du campus : matière, hauteur d'étage,
         // largeur de travée, hauteur et largeur des vitrages, stores, part de verre vue de loin.
@@ -275,9 +261,10 @@ campusMat.onBeforeCompile = (shader) => {
           skin = vec3(0.5, 0.52, 0.54) * dim; fh = 0.62; cw = 0.24; rowA = 0.44; rowB = 0.93; fill = 0.95; ribs = 1.0; blinds = 0.2; cover = 0.42; weather = 0.45;
           pane0 = vec3(0.06, 0.1, 0.14); pane1 = vec3(0.16, 0.24, 0.3);
         } else if (st == 3.0) {      // ELA…, INF… : le même dessin en ocre
-          skin = vec3(0.69, 0.51, 0.31) * dim; fh = 0.62; cw = 0.24; rowA = 0.44; rowB = 0.93; fill = 0.95; ribs = 1.0; blinds = 0.2; cover = 0.38; weather = 0.6;
+          skin = vec3(0.61, 0.52, 0.38) * dim; fh = 0.6; cw = 0.6; rowA = 0.03; rowB = 0.6; fill = 0.82; blinds = 0.1; cover = 0.34; weather = 0.5;
+          pane0 = vec3(0.03, 0.05, 0.11); pane1 = vec3(0.08, 0.12, 0.2);
         } else if (st == 4.0) {      // ME D : volets d'aluminium inclinés
-          skin = vec3(0.58, 0.6, 0.62) * dim; fh = 0.62; cw = 0.46; rowA = 0.0; rowB = 1.0; fill = 1.0; ribs = 1.0; blinds = 0.0; cover = 0.14; weather = 0.3;
+          skin = vec3(0.05, 0.07, 0.09); fh = 0.62; cw = 0.46; rowA = 0.0; rowB = 1.0; fill = 1.0; ribs = 1.0; blinds = 0.0; cover = 0.14; weather = 0.3;
         } else if (st == 5.0) {      // BI : bandes de couleur sur noir
           skin = vec3(0.025); fh = 0.62; cw = 0.3; rowA = 0.12; rowB = 0.9; fill = 0.9; blinds = 0.0; cover = 0.3; weather = 0.2;
         } else if (st == 6.0) {      // BM : enduit gris clair, fenêtres larges à stores
@@ -450,6 +437,419 @@ const treesReady = loadBin("geo/trees.bin", Float32Array).then((a) => {
   }
   trunks.castShadow = true;
   campus.add(trunks);
+  shadowsDirty();
+  wake();
+});
+
+// ==========================================================================================
+// Les façades en 3D : de vraies pièces, bâties le long des murs de campus.drc (geo/walls.bin). Les
+// proportions sont relevées sur des photos du campus (trame EPFL de 7,20 m) ; aucune image : la
+// matière et le petit relief (persiennes, joints de carrelage, enduit) sont calculés.
+// ==========================================================================================
+const M = 1 / UNIT;                                  // un mètre en unités de scène
+const lin = (hex) => new THREE.Color(hex);
+const PLAIN = 0, LOUVRE = 1, TILE = 2, RENDER = 3, RIB = 4;
+class Module {
+  constructor() { this.body = []; this.glass = []; }
+  paint(g, color, kind) {
+    const geo = g.index ? g.toNonIndexed() : g, n = geo.attributes.position.count, c = lin(color);
+    const col = new Float32Array(n * 3), k = new Float32Array(n).fill(kind);
+    for (let i = 0; i < n; i++) col.set([c.r, c.g, c.b], i * 3);
+    geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
+    geo.setAttribute("aKind", new THREE.BufferAttribute(k, 1));
+    for (const name of Object.keys(geo.attributes)) if (!["position", "normal", "color", "aKind"].includes(name)) geo.deleteAttribute(name);
+    this.body.push(geo);
+    return this;
+  }
+  box(x0, y0, z0, x1, y1, z1, color, kind = PLAIN, tilt = 0) {
+    const g = new THREE.BoxGeometry(x1 - x0, y1 - y0, z1 - z0);
+    if (tilt) g.rotateX(tilt);
+    g.translate((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2);
+    return this.paint(g, color, kind);
+  }
+  // Un plan de verre, en retrait.
+  pane(x0, y0, x1, y1, z) {
+    const g = new THREE.PlaneGeometry(x1 - x0, y1 - y0);
+    g.translate((x0 + x1) / 2, (y0 + y1) / 2, z);
+    const geo = g.toNonIndexed();
+    geo.deleteAttribute("uv");
+    this.glass.push(geo);
+    return this;
+  }
+  // Un plan de matière (mur, persienne).
+  sheet(x0, y0, x1, y1, z, color, kind) {
+    const g = new THREE.PlaneGeometry(x1 - x0, y1 - y0);
+    g.translate((x0 + x1) / 2, (y0 + y1) / 2, z);
+    return this.paint(g, color, kind);
+  }
+  // Un rectangle aux coins arrondis, plein ou percé, extrudé avec un chanfrein : les tôles embouties.
+  pillow(x0, y0, x1, y1, r, z, depth, color, kind, hole, bevel = 0.03, curve = 3) {
+    const rounded = (path, a, b, c, d, q) => {
+      path.moveTo(a + q, b); path.lineTo(c - q, b); path.quadraticCurveTo(c, b, c, b + q);
+      path.lineTo(c, d - q); path.quadraticCurveTo(c, d, c - q, d); path.lineTo(a + q, d);
+      path.quadraticCurveTo(a, d, a, d - q); path.lineTo(a, b + q); path.quadraticCurveTo(a, b, a + q, b);
+      return path;
+    };
+    const shape = rounded(new THREE.Shape(), x0, y0, x1, y1, r);
+    if (hole) shape.holes.push(rounded(new THREE.Path(), hole[0], hole[1], hole[2], hole[3], hole[4]));
+    const g = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: bevel > 0, bevelThickness: bevel, bevelSize: bevel, bevelOffset: -bevel, bevelSegments: 2, curveSegments: curve });
+    g.translate(0, 0, z);
+    return this.paint(g, color, kind);
+  }
+  done() {
+    const merge = (list) => {
+      if (!list.length) return null;
+      const g = mergeGeometries(list);
+      g.scale(M, M, M);
+      return g;
+    };
+    return { body: merge(this.body), glass: merge(this.glass) };
+  }
+}
+const ALU = "#a9adb2", JOINT = "#26282b", TILE_C = "#cdbfa6", NAVY = "#1d3760", WHITE = "#e4e3de", GREY_R = "#9aa7aa", TAUPE = "#8f867a", BLACK = "#101114";
+function aluminium(rich) {
+  // ME, MA, CM…, 7,20 × 3,75 m : deux rangs de tôles embouties à persiennes, puis une longue baie
+  // dans un cadre arrondi, le vitrage en retrait.
+  const m = new Module();
+  m.box(0, 0, 0, 7.2, 3.75, 0.05, JOINT);
+  for (const [y0, y1] of [[0.02, 0.93], [0.95, 1.86]]) {
+    for (const [x0, x1] of [[0.03, 4.3], [4.34, 7.17]]) {
+      if (rich) {
+        m.pillow(x0, y0, x1, y1, 0.16, 0.08, 0.2, ALU, PLAIN, null, 0.05);
+        const half = (x0 + x1) / 2;
+        m.sheet(x0 + 0.24, y0 + 0.2, half - 0.08, y1 - 0.2, 0.36, ALU, LOUVRE);
+        m.sheet(half + 0.08, y0 + 0.2, x1 - 0.24, y1 - 0.2, 0.36, ALU, LOUVRE);
+      } else m.box(x0, y0, 0.05, x1, y1, 0.32, ALU, LOUVRE);
+    }
+  }
+  if (rich) m.pillow(0.04, 1.88, 7.16, 3.73, 0.16, 0.08, 0.2, ALU, PLAIN, [0.26, 2.04, 6.94, 3.58, 0.14], 0.04);
+  else { m.box(0.04, 1.88, 0.05, 7.16, 2.04, 0.32, ALU); m.box(0.04, 3.58, 0.05, 7.16, 3.73, 0.32, ALU); m.box(0.04, 2.04, 0.05, 0.26, 3.58, 0.32, ALU); m.box(6.94, 2.04, 0.05, 7.16, 3.58, 0.32, ALU); }
+  for (const x of [1.42, 2.72, 4.78, 6.42]) m.box(x - 0.04, 2.04, 0.06, x + 0.04, 3.58, 0.13, "#3b4648");
+  if (rich) { m.box(0.26, 3.5, 0.06, 6.94, 3.58, 0.13, "#3b4648"); m.box(0.26, 2.04, 0.06, 6.94, 2.1, 0.16, "#3b4648"); }
+  m.pane(0.26, 2.04, 6.94, 3.58, 0.08);
+  return m.done();
+}
+function ceramic() {
+  // EL, IN, 3,60 × 3,60 m : un mur carrelé percé d'une baie, cadre bleu marine, tablette inclinée.
+  const m = new Module();
+  m.pillow(0, 0, 3.6, 3.6, 0.001, 0, 0.26, TILE_C, TILE, [0.33, 0.12, 3.25, 2.14, 0.001], 0, 1);
+  m.box(0.33, 0.12, 0.02, 3.25, 0.22, 0.14, NAVY);
+  m.box(0.33, 2.04, 0.02, 3.25, 2.14, 0.14, NAVY);
+  m.box(0.33, 0.12, 0.02, 0.43, 2.14, 0.14, NAVY);
+  m.box(3.15, 0.12, 0.02, 3.25, 2.14, 0.14, NAVY);
+  m.box(1.76, 0.12, 0.02, 1.92, 2.14, 0.15, NAVY);
+  m.box(0.86, 0.22, 0.02, 0.98, 1.68, 0.14, NAVY);
+  m.box(0.43, 1.66, 0.02, 3.15, 1.78, 0.14, NAVY);
+  m.box(0.3, 0.04, 0.1, 3.28, 0.13, 0.32, NAVY, PLAIN, -0.2);
+  m.pane(0.33, 0.12, 3.25, 2.14, 0.06);
+  return m.done();
+}
+function panelled(open) {
+  // BM, 6,00 × 3,30 m : enduit gris clair, baie à deux vantaux, stores à lames.
+  const m = new Module();
+  m.pillow(0, 0, 6, 3.3, 0.001, 0, 0.2, GREY_R, RENDER, [0.42, 0.62, 5.58, 2.62, 0.001], 0, 1);
+  m.box(0.42, 0.62, 0.03, 5.58, 0.7, 0.1, WHITE); m.box(0.42, 2.54, 0.03, 5.58, 2.62, 0.1, WHITE);
+  m.box(0.42, 0.62, 0.03, 0.5, 2.62, 0.1, WHITE); m.box(5.5, 0.62, 0.03, 5.58, 2.62, 0.1, WHITE);
+  m.box(2.95, 0.62, 0.03, 3.05, 2.62, 0.11, WHITE);
+  m.box(0.38, 0.54, 0.1, 5.62, 0.6, 0.27, "#c8cbcb");
+  const down = [open ? 0.25 : 0.9, open ? 0.72 : 0.5];
+  for (const [side, x0, x1] of [[0, 0.5, 2.95], [1, 3.05, 5.5]]) {
+    for (let y = 2.5; y > 2.54 - 1.9 * down[side]; y -= 0.075) m.box(x0, y - 0.03, 0.1, x1, y + 0.03, 0.115, "#8b8f91", PLAIN, 0.5);
+  }
+  m.pane(0.42, 0.62, 5.58, 2.62, 0.05);
+  return m.done();
+}
+function rtsBox() {
+  // RTS, 7,20 × 3,80 m : béton taupe, baie profonde cerclée de noir, châssis blancs.
+  const m = new Module();
+  m.pillow(0, 0, 7.2, 3.8, 0.001, 0, 0.42, TAUPE, RENDER, [0.62, 0.55, 6.58, 3.2, 0.001], 0, 1);
+  m.box(0.62, 0.55, 0.14, 6.58, 0.66, 0.16, BLACK); m.box(0.62, 3.09, 0.14, 6.58, 3.2, 0.16, BLACK);
+  m.box(0.62, 0.55, 0.14, 0.73, 3.2, 0.16, BLACK); m.box(6.47, 0.55, 0.14, 6.58, 3.2, 0.16, BLACK);
+  m.box(0.73, 0.66, 0.05, 6.47, 0.74, 0.14, WHITE); m.box(0.73, 3.01, 0.05, 6.47, 3.09, 0.14, WHITE);
+  m.box(0.73, 2.34, 0.05, 6.47, 2.4, 0.14, WHITE);
+  for (let i = 0; i <= 6; i++) { const x = 0.73 + i * (5.74 / 6); m.box(x - 0.035, 0.66, 0.05, x + 0.035, 3.09, 0.14, WHITE); }
+  m.pane(0.73, 0.66, 6.47, 3.09, 0.07);
+  return m.done();
+}
+function curtain(w, h, color, slim) {
+  // Mur-rideau : une grille de montants devant le verre.
+  const m = new Module();
+  m.box(0, 0, 0, slim, h, 0.16, color); m.box(0, 0, 0, w, slim, 0.12, color);
+  m.pane(0, 0, w, h, 0.04);
+  return m.done();
+}
+function darkMetal() {
+  // BC : un bardage nervuré noir, de hauts vitrages étroits.
+  const m = new Module();
+  m.box(0, 0, 0, 3.6, 3.7, 0.04, "#0d0e10");
+  m.sheet(0, 0, 1.5, 3.7, 0.14, "#17181b", RIB);
+  m.box(1.5, 0, 0.04, 1.58, 3.7, 0.16, "#17181b"); m.box(3.52, 0, 0.04, 3.6, 3.7, 0.16, "#17181b");
+  m.pane(1.58, 0.1, 3.52, 3.6, 0.06);
+  return m.done();
+}
+function timber() {
+  // ArtLab : des lames de bois verticales.
+  const m = new Module();
+  m.box(0, 0, 0, 1.2, 3, 0.05, "#2f2013");
+  for (let x = 0.05; x < 1.2; x += 0.2) m.box(x, 0, 0.05, x + 0.13, 3, 0.13, "#7d5730");
+  return m.done();
+}
+function warren() {
+  // La dalle RTS, sur toute sa hauteur : montants et diagonales d'une poutre Warren.
+  const m = new Module();
+  m.box(0, 0, 0, 6, 0.5, 0.3, "#c9c7c1"); m.box(0, 8.5, 0, 6, 9, 0.3, "#c9c7c1");
+  const d = Math.hypot(3, 8), a = Math.atan2(3, 8);
+  for (const [x, s] of [[1.5, 1], [4.5, -1]]) {
+    const g = new THREE.BoxGeometry(0.28, d, 0.22);
+    g.rotateZ(-a * s); g.translate(x, 4.5, 0.2);
+    m.paint(g, "#d6d4cf", PLAIN);
+  }
+  m.pane(0, 0.5, 6, 8.5, 0.06);
+  return m.done();
+}
+function shutter() { const m = new Module(); m.box(0, 0, 0, 1, 1, 0.07, "#b8bcc0", LOUVRE); return m.done(); }
+function ribbed() { const m = new Module(); m.box(0, 0, 0, 1, 1, 0.05, "#ffffff", RIB); return m.done(); }
+function mullion() { const m = new Module(); m.box(-0.035, 0, 0, 0.035, 1, 0.16, "#15171a"); return m.done(); }
+
+// La matière, sans image.
+const facadeMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.62, metalness: 0.12 });
+facadeMat.onBeforeCompile = (shader) => {
+  shader.vertexShader = shader.vertexShader
+    .replace("#include <common>", "#include <common>\nattribute float aKind;\nvarying float vKind;\nvarying vec3 vM;\nvarying float vCell;")
+    .replace("#include <begin_vertex>", `#include <begin_vertex>
+      vKind = aKind; vM = position * ${UNIT.toFixed(1)};
+      vCell = float(gl_InstanceID);`);
+  shader.fragmentShader = shader.fragmentShader
+    .replace("#include <common>", `#include <common>
+      varying float vKind; varying vec3 vM; varying float vCell;
+      float fh(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+      float fn(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+        return mix(mix(fh(i), fh(i + vec2(1, 0)), f.x), mix(fh(i + vec2(0, 1)), fh(i + vec2(1, 1)), f.x), f.y); }
+      float gHeight = 0.0; float gRough = -1.0; float gMetal = -1.0;`)
+    .replace("#include <color_fragment>", `#include <color_fragment>
+      float k = floor(vKind + 0.5);
+      vec2 q = vM.xy;
+      float px = max(fwidth(q.x), fwidth(q.y));
+      float wash = 0.93 + 0.12 * fn(q * 0.5 + vCell * 0.37);
+      if (k == 1.0) {
+        // Les persiennes de la tôle : de fines nervures horizontales.
+        float vis = 1.0 - smoothstep(0.012, 0.032, px);
+        float s = fract(q.y / 0.07);
+        gHeight = (smoothstep(0.1, 0.3, s) - smoothstep(0.55, 0.8, s)) * 0.012 * vis;
+        diffuseColor.rgb *= mix(0.86, 1.0 - 0.42 * smoothstep(0.62, 0.9, s), vis);
+        gMetal = 0.72; gRough = 0.38;
+      } else if (k == 2.0) {
+        // Le carrelage : 24 cm, joints sombres, chaque carreau un peu différent.
+        vec2 t = q / 0.24, c = floor(t), f = abs(fract(t) - 0.5);
+        float vis = 1.0 - smoothstep(0.008, 0.024, px);
+        float joint = smoothstep(0.455, 0.49, max(f.x, f.y));
+        diffuseColor.rgb *= mix(0.9, (0.93 + 0.13 * fh(c)) * (1.0 - 0.72 * joint), vis) * wash;
+        gHeight = -joint * 0.004 * vis;
+        gRough = 0.34;
+      } else if (k == 3.0) {
+        float vis = 1.0 - smoothstep(0.01, 0.04, px);
+        gHeight = fn(q * 40.0) * 0.003 * vis;
+        diffuseColor.rgb *= wash;
+        gRough = 0.86;
+      } else if (k == 4.0) {
+        float vis = 1.0 - smoothstep(0.02, 0.07, px);
+        float s = fract(q.x / 0.12);
+        gHeight = smoothstep(0.2, 0.5, abs(s - 0.5) * 2.0) * 0.012 * vis;
+        diffuseColor.rgb *= 1.0 - 0.3 * vis * smoothstep(0.7, 1.0, abs(s - 0.5) * 2.0);
+        gMetal = 0.4; gRough = 0.45;
+      } else {
+        diffuseColor.rgb *= wash;
+        gMetal = 0.45; gRough = 0.42;
+      }`)
+    .replace("#include <roughnessmap_fragment>", "#include <roughnessmap_fragment>\nif (gRough >= 0.0) roughnessFactor = gRough;")
+    .replace("#include <metalnessmap_fragment>", "#include <metalnessmap_fragment>\nif (gMetal >= 0.0) metalnessFactor = gMetal;")
+    .replace("#include <normal_fragment_maps>", `#include <normal_fragment_maps>
+      {
+        vec3 sx = dFdx(-vViewPosition), sy = dFdy(-vViewPosition);
+        vec3 r1 = cross(sy, normal), r2 = cross(normal, sx);
+        float det = dot(sx, r1) * faceDirection;
+        vec3 grad = sign(det) * (dFdx(gHeight) * ${(1 / UNIT).toFixed(4)} * r1 + dFdy(gHeight) * ${(1 / UNIT).toFixed(4)} * r2) * 6.0;
+        normal = normalize(abs(det) * normal - grad);
+      }`);
+};
+const glassMat = new THREE.MeshStandardMaterial({ color: "#3c4a55", roughness: 0.07, metalness: 0.82, side: THREE.DoubleSide });
+glassMat.onBeforeCompile = (shader) => {
+  shader.uniforms.uNight = night;
+  shader.vertexShader = shader.vertexShader
+    .replace("#include <common>", "#include <common>\nvarying float vId;")
+    .replace("#include <begin_vertex>", `#include <begin_vertex>
+      vId = float(gl_InstanceID);
+      // Chaque vitre penche d'un rien : elle n'attrape pas le même morceau de ciel que sa voisine.
+      vNormal = normalize(vNormal + normalMatrix * vec3((vec2(fract(sin(vId * 12.99) * 437.5), fract(sin(vId * 78.23) * 437.5)) - 0.5) * 0.05, 0.0));`);
+  shader.fragmentShader = shader.fragmentShader
+    .replace("#include <common>", "#include <common>\nuniform float uNight;\nvarying float vId;")
+    .replace("#include <emissivemap_fragment>", `#include <emissivemap_fragment>
+      float lit = step(0.5, fract(sin(vId * 91.7) * 4375.5));
+      totalEmissiveRadiance += vec3(1.0, 0.72, 0.42) * lit * uNight * 0.9;
+      diffuseColor.rgb *= 0.8 + 0.5 * fract(sin(vId * 33.1) * 437.5);`);
+};
+
+// Le verre du Rolex : sombre, on devine la lumière de l'intérieur ; de nuit, il est tout allumé.
+const rolexGlassMat = new THREE.MeshStandardMaterial({ color: "#26343b", roughness: 0.06, metalness: 0.55 });
+rolexGlassMat.onBeforeCompile = (shader) => {
+  shader.uniforms.uNight = night;
+  shader.fragmentShader = shader.fragmentShader
+    .replace("#include <common>", "#include <common>\nuniform float uNight;")
+    .replace("#include <emissivemap_fragment>", "#include <emissivemap_fragment>\ntotalEmissiveRadiance += vec3(1.0, 0.76, 0.5) * mix(0.012, 1.1, uNight);");
+};
+const FASCIA = 0.05, GLASS_END = 0.6, SLAB = 0.12;   // la coupe du Rolex, sous le toit (unités)
+const facadeGroup = new THREE.Group();
+facadeGroup.visible = false;
+campus.add(facadeGroup);
+const facadesReady = Promise.all([loadBin("geo/walls.bin", Float32Array), loadBin("geo/mullions.bin", Float32Array)]).then(([a, posts]) => {
+  const HI = small ? 0 : 62, LO = small ? 95 : Infinity;
+  const place = new THREE.Matrix4(), scaleM = new THREE.Matrix4(), turn = new THREE.Matrix4();
+  const lists = new Map();                            // clé → { kit, matrices, colors }
+  const push = (key, kit, m, color) => {
+    let l = lists.get(key);
+    if (!l) lists.set(key, l = { kit, matrices: [], colors: [] });
+    l.matrices.push(m.clone()); l.colors.push(color);
+  };
+  const kits = {
+    aluHi: aluminium(true), aluLo: aluminium(false), tile: ceramic(), bmA: panelled(true), bmB: panelled(false), rts: rtsBox(),
+    swiss: curtain(1.8, 3.6, "#0a0c0f", 0.09), bc: darkMetal(), wood: timber(), truss: warren(), shutter: shutter(), rib: ribbed(), mull: mullion(),
+  };
+  const size = { aluHi: [7.2, 3.75], aluLo: [7.2, 3.75], tile: [3.6, 3.6], bmA: [6, 3.3], rts: [7.2, 3.8], swiss: [1.8, 3.6], bc: [3.6, 3.7], wood: [1.2, 3], truss: [6, 9] };
+  const BI = ["#d98a12", "#2a2c30", "#c9241a", "#2a2c30", "#e0b21a", "#14613a", "#2a2c30", "#14306f"];
+  let seedF = 11;
+  const rnd = () => ((seedF = (seedF * 16807) % 2147483647) / 2147483647);
+  for (let i = 0; i < a.length; i += 9) {
+    const [x0, z0, x1, z1, y0, y1, nx, nz, s] = a.subarray(i, i + 9);
+    if (s === 0) continue;
+    const mx = (x0 + x1) / 2, mz = (z0 + z1) / 2, dist = Math.hypot(mx, mz);
+    if (dist > LO) continue;
+    // Le repère du mur : x le long, y vers le haut, z vers l'extérieur.
+    let tx = nz, tz = -nx;
+    const flip = (x1 - x0) * tx + (z1 - z0) * tz < 0;
+    const sx = flip ? x1 : x0, sz = flip ? z1 : z0;
+    const len = Math.hypot(x1 - x0, z1 - z0), tall = y1 - y0;
+    const frame = (u, y, w, h, depth = 1, roll = 0) => {
+      place.set(tx, 0, nx, sx + tx * u, 0, 1, 0, y, tz, 0, nz, sz + tz * u, 0, 0, 0, 1);
+      if (roll) { place.multiply(turn.makeRotationZ(roll)); }
+      return place.multiply(scaleM.makeScale(w, h, depth));
+    };
+    const grid = (name, key, top = tall, wantH) => {
+      const [w, h] = size[name];
+      const nx_ = Math.max(1, Math.round(len / (w * M))), ny = Math.max(1, Math.round(top / ((wantH ?? h) * M)));
+      const ws = len / nx_ / (w * M), hs = top / ny / (h * M);
+      for (let r = 0; r < ny; r++) for (let c = 0; c < nx_; c++) {
+        const k = key(r, c);
+        push(k, kits[k.split(":")[0]], frame(c * w * M * ws, y0 + r * h * M * hs, ws, hs), 0xffffff);
+      }
+    };
+    const cell = `${Math.floor(mx / 45)},${Math.floor(mz / 45)}`;
+    if (s === 1) {
+      continue;   // ses montants viennent de geo/mullions.bin
+    } else if (s === 2) {
+      if (tall < 0.45 || len < 0.5) continue;
+      grid(dist < HI ? "aluHi" : "aluLo", () => `${dist < HI ? "aluHi" : "aluLo"}:${cell}`);
+    } else if (s === 3) {
+      if (tall < 0.45) continue;
+      grid("tile", () => `tile:${cell}`);
+    } else if (s === 6) {
+      grid("bmA", (r, c) => ((r * 5 + c * 3) % 7 < 3 ? `bmB:${cell}` : `bmA:${cell}`));
+    } else if (s === 9) {
+      grid("rts", () => `rts:${cell}`);
+    } else if (s === 7) {
+      grid("swiss", () => `swiss:${cell}`);
+    } else if (s === 8) {
+      grid("bc", () => `bc:${cell}`);
+    } else if (s === 11) {
+      grid("wood", () => `wood:${cell}`);
+    } else if (s === 10) {
+      grid("truss", () => `truss:${cell}`);
+    } else if (s === 4) {
+      // ME D : des volets indépendants, chacun penché à sa façon, à distance du mur ; un sur quatre
+      // manque et laisse voir le verre.
+      const bay = 2.3 * M, floor = 3.7 * M;
+      const nX = Math.max(1, Math.round(len / bay)), nY = Math.max(1, Math.round(tall / floor));
+      const w = len / nX, h = tall / nY;
+      for (let r = 0; r < nY; r++) for (let c = 0; c < nX; c++) {
+        if (rnd() < 0.24) continue;
+        const lean = (rnd() - 0.5) * 0.3;
+        const m4b = frame((c + 0.5) * w, y0 + (r + 0.5) * h, w * 0.92 * UNIT, h * 0.96 * UNIT, 1, lean);
+        m4b.multiply(turn.makeTranslation(-0.5 * M, -0.5 * M, 0.34 * M));
+        push(`shutter:${cell}`, kits.shutter, m4b, 0xffffff);
+      }
+    } else if (s === 5) {
+      // BI : un socle noir nervuré, puis de larges bandes de couleur.
+      const bay = 2.4 * M, nX = Math.max(1, Math.round(len / bay)), w = len / nX;
+      const base = Math.min(tall, 3.7 * M);
+      for (let c = 0; c < nX; c++) {
+        push(`rib:${cell}`, kits.rib, frame(c * w, y0, w * UNIT, base * UNIT, 1), 0x202225);
+        if (tall > base) push(`rib:${cell}`, kits.rib, frame(c * w, y0 + base, w * 0.985 * UNIT, (tall - base) * UNIT, 1.6), new THREE.Color(BI[(c + Math.floor(sx * 3)) & 7]).getHex());
+      }
+    }
+  }
+  // Le Rolex : un montant à la hauteur exacte du toit, de la rive à la dalle.
+  for (let i = 0; i < posts.length; i += 6) {
+    const [x, z, top, nx, nz] = posts.subarray(i, i + 6);
+    place.set(nz, 0, nx, x + nx * 0.012, 0, 1, 0, top - GLASS_END, -nx, 0, nz, z + nz * 0.012, 0, 0, 0, 1);
+    place.multiply(scaleM.makeScale(1, (GLASS_END - FASCIA) * UNIT, 1));
+    push(`mull:${Math.floor(x / 45)},${Math.floor(z / 45)}`, kits.mull, place, 0xffffff);
+  }
+  // Puis sa peau, d'un montant au suivant : la rive mince, le verre, la dalle de béton, qui suivent
+  // exactement la ligne du toit.
+  const strip = { body: [], color: [], glass: [] };
+  const roofEdge = lin("#d9d6d0"), concrete = lin("#a7a39b");
+  const quad = (list, ax, az, ay0, ay1, bx, bz, by0, by1, nx, nz) => {
+    // Toujours face à l'extérieur.
+    if ((bz - az) * -1 * nx + (bx - ax) * nz < 0) [ax, az, ay0, ay1, bx, bz, by0, by1] = [bx, bz, by0, by1, ax, az, ay0, ay1];
+    list.push({ p: [ax, ay0, az, bx, by0, bz, bx, by1, bz, ax, ay0, az, bx, by1, bz, ax, ay1, az], n: [nx, 0, nz] });
+  };
+  for (let i = 0; i + 6 < posts.length; i += 6) {
+    const [ax, az, at, nx, nz, ak] = posts.subarray(i, i + 6);
+    const [bx, bz, bt, , , bk] = posts.subarray(i + 6, i + 12);
+    if (Math.floor(ak / 4096) !== Math.floor(bk / 4096) || Math.hypot(bx - ax, bz - az) > 1.3) continue;
+    const out = (d) => [ax + nx * d, az + nz * d, bx + nx * d, bz + nz * d];
+    const [gx, gz, hx, hz] = out(0.006), [fx, fz, ix, iz] = out(0.024);
+    quad(strip.glass, gx, gz, at - GLASS_END, at - FASCIA, hx, hz, bt - GLASS_END, bt - FASCIA, nx, nz);
+    quad(strip.body, fx, fz, at - FASCIA, at + 0.006, ix, iz, bt - FASCIA, bt + 0.006, nx, nz); strip.color.push(roofEdge);
+    quad(strip.body, fx, fz, at - GLASS_END - SLAB, at - GLASS_END, ix, iz, bt - GLASS_END - SLAB, bt - GLASS_END, nx, nz); strip.color.push(concrete);
+  }
+  const buildStrip = (list, colors) => {
+    const pos = new Float32Array(list.length * 18), nor = new Float32Array(list.length * 18), col = new Float32Array(list.length * 18);
+    list.forEach((q, i) => {
+      pos.set(q.p, i * 18);
+      for (let v = 0; v < 6; v++) {
+        nor.set(q.n, i * 18 + v * 3);
+        if (colors) col.set([colors[i].r, colors[i].g, colors[i].b], i * 18 + v * 3);
+      }
+    });
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    g.setAttribute("normal", new THREE.BufferAttribute(nor, 3));
+    if (colors) { g.setAttribute("color", new THREE.BufferAttribute(col, 3)); g.setAttribute("aKind", new THREE.BufferAttribute(new Float32Array(list.length * 6), 1)); }
+    return g;
+  };
+  const rolexGlass = new THREE.Mesh(buildStrip(strip.glass), rolexGlassMat);
+  const rolexEdge = new THREE.Mesh(buildStrip(strip.body, strip.color), facadeMat);
+  rolexEdge.castShadow = true; rolexEdge.receiveShadow = true;
+  facadeGroup.add(rolexGlass, rolexEdge);
+  const tint = new THREE.Color();
+  let triangles = 0;
+  for (const { kit, matrices, colors } of lists.values()) {
+    const n = matrices.length;
+    const add = (geo, mat, cast) => {
+      if (!geo) return;
+      const mesh = new THREE.InstancedMesh(geo, mat, n);
+      matrices.forEach((m, k) => mesh.setMatrixAt(k, m));
+      if (mat === facadeMat) colors.forEach((c, k) => mesh.setColorAt(k, tint.set(c)));
+      mesh.castShadow = cast; mesh.receiveShadow = true;
+      mesh.computeBoundingSphere();
+      facadeGroup.add(mesh);
+      triangles += n * geo.attributes.position.count / 3;
+    };
+    add(kit.body, facadeMat, true);
+    add(kit.glass, glassMat, false);
+  }
+  window.__facades = { meshes: facadeGroup.children.length, triangles: Math.round(triangles) };
+  facadeGroup.visible = campus.scale.y >= 0.999;
   shadowsDirty();
   wake();
 });
@@ -700,7 +1100,7 @@ function introFrame(dt) {
   shiftNow = shiftWant * ease(band01(u, 0.9, 1));
   liftNow = liftWant * ease(band01(u, 0.9, 1));
   const rise = Math.max(0.02, ease(band01(u, 0.4, 0.58)));
-  if (Math.abs(campus.scale.y - rise) > 1e-4) { campus.scale.y = rise; shadowsDirty(); }
+  if (Math.abs(campus.scale.y - rise) > 1e-4) { campus.scale.y = rise; facadeGroup.visible = rise >= 0.999; shadowsDirty(); }
   devState.phone.on = ease(band01(u, 0.93, 1)) * devWant.phone.on;
   const beat = INTRO.beats.reduce((acc, b, i) => (u >= b.at ? i : acc), 0);
   if (beat !== intro.beat && card) {
@@ -875,7 +1275,7 @@ resize();
 if (intro.active && scrollY < 40 && !location.hash) {
   root.classList.add("intro", "intro-wait");
   camPos.copy(introPos.getPoint(0)); camLook.copy(introLook.getPoint(0)); shiftNow = 0; liftNow = 0;
-  campus.scale.y = 0.02; devState.phone.on = 0;
+  campus.scale.y = 0.02; facadeGroup.visible = false; devState.phone.on = 0;
   const giveUp = setTimeout(() => { intro.active = false; finishInstantly(); }, 10000);
   Promise.all([groundReady, treesReady.catch(() => {}), buildingsReady.catch(() => {})]).then(() => {
     clearTimeout(giveUp);
@@ -894,7 +1294,7 @@ if (intro.active && scrollY < 40 && !location.hash) {
   groundReady.then(() => wake()).catch(() => {});
 }
 function finishInstantly() {
-  campus.scale.y = 1;
+  campus.scale.y = 1; facadeGroup.visible = true;
   shadowsDirty();
   root.classList.add("intro-done");
   root.classList.remove("intro", "intro-wait");
