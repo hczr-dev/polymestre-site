@@ -216,7 +216,13 @@ campusMat.onBeforeCompile = (shader) => {
       uniform vec4 uNearBox, uHiBox;
       uniform vec3 uWall, uRoof;
       float gGlass = 0.0, gGloss = 0.0, gLit = 0.0;
+      vec3 gTilt = vec3(0.0);
       float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+      float noise(vec2 p) {
+        vec2 i = floor(p), f = fract(p);
+        f = f * f * (3.0 - 2.0 * f);
+        return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
+      }
       float band(float t, float a, float b, float w) { return smoothstep(a - w, a + w, t) * (1.0 - smoothstep(b - w, b + w, t)); }`)
     .replace("#include <color_fragment>", `#include <color_fragment>
       vec3 up = normalize(vUp);
@@ -240,7 +246,10 @@ campusMat.onBeforeCompile = (shader) => {
         mull *= 1.0 - smoothstep(0.05, 0.14, wr);
         float isGlass = band(below, 0.06, 0.62, wy);
         float isSlab = band(below, 0.62, 0.8, wy);
-        vec3 glass = mix(vec3(0.15, 0.2, 0.24), vec3(0.3, 0.33, 0.33), smoothstep(0.62, 0.1, below));
+        float paneId = floor(run / 0.25);
+        float pr = hash(vec2(paneId, 5.0));
+        vec3 glass = mix(vec3(0.13, 0.18, 0.22), vec3(0.3, 0.33, 0.33), smoothstep(0.62, 0.1, below)) * (0.86 + 0.28 * pr);
+        gTilt = (vec3(pr, hash(vec2(paneId, 9.0)), 0.5) - 0.5) * 0.05 * isGlass;
         wall = uRoof * 0.98;
         wall = mix(wall, mix(glass, vec3(0.8), mull), isGlass);
         wall = mix(wall, uRoof * 0.8, isSlab);
@@ -254,23 +263,51 @@ campusMat.onBeforeCompile = (shader) => {
         vec2 nu = (vLocal.xz - uNearBox.xy) / uNearBox.z + 0.5;
         top = hi ? texture2D(uHi, hu).rgb : texture2D(uNear, nu).rgb;
         top = mix(top, vec3(dot(top, vec3(0.333))), 0.12);
-        // Une teinte par bâtiment, tirée de son pied.
-        float tint = hash(vec2(floor(vSpan.y * 40.0), 3.0));
-        vec3 skin = uWall * mix(vec3(0.86, 0.85, 0.83), vec3(1.0, 0.985, 0.95), tint);
-        vec3 pane = vec3(0.2, 0.25, 0.29);
+        // Chaque bâtiment tire de son pied une teinte et un type de façade : mur-rideau, bandeaux
+        // vitrés ou fenêtres percées ; bardage sombre pour quelques-uns.
+        float bid = floor(vSpan.y * 40.0);
+        float kind = hash(vec2(bid, 11.0)), tint = hash(vec2(bid, 3.0));
+        float curtain = step(kind, 0.3), ribbon = step(0.3, kind) * step(kind, 0.7);
+        vec3 skin = uWall * mix(vec3(0.8, 0.79, 0.77), vec3(1.0, 0.985, 0.95), tint);
+        skin = mix(skin, uWall * vec3(0.5, 0.51, 0.53), step(0.86, kind));
+        // La patine : des taches larges, des coulures, le pied plus sombre.
+        vec2 wp = vec2(run, vLocal.y);
+        float stain = noise(wp * vec2(1.1, 0.6)) * 0.6 + noise(wp * vec2(4.5, 1.4)) * 0.4;
+        float drip = noise(vec2(run * 11.0, vLocal.y * 0.5));
+        skin *= (0.9 + 0.17 * stain) * mix(0.8, 1.0, smoothstep(0.0, 0.55, above));
         float lvl = above / 0.55;
-        float col = run / 0.42;
-        float win = band(fract(lvl), 0.3, 0.82, fwidth(lvl)) * band(fract(col), 0.14, 0.86, fwidth(col));
-        float detail = 1.0 - smoothstep(0.035, 0.1, max(wr, wy));
-        win *= detail * step(0.35, above);
-        vec3 far = mix(skin, pane, 0.2);
-        wall = mix(mix(far, skin, detail), pane, win);
-        gGlass = win;
-        gGloss = win * 0.7;
-        gLit = win * step(0.55, hash(vec2(floor(col), floor(lvl)) + floor(vSpan.y * 40.0))) * uNight;
+        float col = run / mix(0.42, 0.28, curtain);
+        float fy = fract(lvl), fx = fract(col);
+        float rowA = mix(0.3, 0.16, curtain), rowB = mix(0.82, 0.96, curtain);
+        float fill = mix(0.7, 0.95, max(curtain, ribbon));
+        float wl = fwidth(lvl), wc = fwidth(col);
+        float win = band(fy, rowA, rowB, wl) * band(fx, 0.5 - fill * 0.5, 0.5 + fill * 0.5, wc);
+        float detail = 1.0 - smoothstep(0.04, 0.12, max(wr, wy));
+        // Une vitre n'est jamais comme sa voisine : un reflet à elle, des stores plus ou moins baissés.
+        vec2 pid = vec2(floor(col), floor(lvl)) + bid;
+        float r1 = hash(pid), r2 = hash(pid + 7.0), r3 = hash(pid + 13.0);
+        float t = clamp((fy - rowA) / (rowB - rowA), 0.0, 1.0);
+        float blind = step(0.58, r2) * step(1.0 - r1 * 0.85, t);
+        vec3 pane = mix(vec3(0.09, 0.12, 0.15), vec3(0.25, 0.29, 0.31), r3);
+        vec3 slats = vec3(0.64, 0.62, 0.57) * (0.9 + 0.1 * sin(t * 60.0));
+        pane = mix(pane, slats, blind);
+        pane *= 1.0 - 0.55 * smoothstep(rowB - 0.08, rowB, fy);
+        float sill = band(fy, rowA - 0.04, rowA, wl);
+        float under = smoothstep(rowA, 0.0, fy) * (1.0 - curtain);
+        vec3 near = skin * (1.0 - 0.16 * under * drip) * (1.0 + 0.12 * sill);
+        near *= 1.0 - 0.14 * band(fy, 0.0, 0.015, wl);
+        float cover = mix(mix(0.2, 0.34, ribbon), 0.62, curtain);
+        vec3 far = mix(skin, vec3(0.2, 0.24, 0.27), cover);
+        win *= step(0.3, above);
+        wall = mix(far, mix(near, pane, win), detail);
+        gGlass = win * detail;
+        gGloss = win * (1.0 - blind) * detail * 0.85;
+        gTilt = (vec3(r1, r2, r3) - 0.5) * 0.09 * gGloss;
+        gLit = win * step(0.55, r2) * uNight;
       }
       diffuseColor.rgb = mix(wall, top, roof);
       gGlass *= 1.0 - roof; gGloss *= 1.0 - roof; gLit *= 1.0 - roof;`)
+    .replace("#include <normal_fragment_maps>", "#include <normal_fragment_maps>\nnormal = normalize(normal + gTilt);")
     .replace("#include <roughnessmap_fragment>", "#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, 0.1, gGloss);")
     .replace("#include <metalnessmap_fragment>", "#include <metalnessmap_fragment>\nmetalnessFactor = mix(metalnessFactor, 0.75, gGloss);")
     .replace("#include <emissivemap_fragment>", "#include <emissivemap_fragment>\ntotalEmissiveRadiance += vec3(1.0, 0.72, 0.42) * gLit * 1.3;");
@@ -511,7 +548,7 @@ function applyTheme() {
 const D = (x, y, d, ry, rx, screen, on = 1) => ({ x, y, d, ry, rx, screen, on });
 const OFF_PHONE = D(0.45, -1.6, 5.4, -0.3, 0.2, null, 0);
 const STOPS = {
-  hero: { pos: [-20, 6.5, 21], look: [10, 10.8, -13], shift: 0.1, phone: D(0.66, -0.1, 5.8, -0.5, 0.06, "iphone-today") },
+  hero: { pos: [-20, 6.5, 21], look: [6, 10.8, -14], shift: 0.1, phone: D(0.66, -0.1, 5.8, -0.5, 0.06, "iphone-today") },
   today: { pos: [-30, 9, 26], look: [4, 2, 0], shift: -0.14, phone: OFF_PHONE },
   import: { pos: [32, 8, 22], look: [2, 2, 0], shift: 0.14, phone: OFF_PHONE },
   etude: { pos: [-27, 5, 15], look: [6, 2.4, 0], shift: -0.14, phone: OFF_PHONE },
