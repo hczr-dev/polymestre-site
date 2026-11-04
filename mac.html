@@ -4,54 +4,16 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>StudyTrack pour Mac</title>
-<meta name="description" content="StudyTrack sur Mac : le chrono dans la barre des menus, tes cours et le mode étude, synchronisés avec ton iPhone par iCloud.">
+<meta name="description" content="Télécharger StudyTrack pour Mac et Windows.">
+<meta http-equiv="refresh" content="0; url=/#telecharger">
+<link rel="canonical" href="https://studytrack.hczr.ch/#telecharger">
 <link rel="icon" href="icon.png">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<header class="bar">
-  <a class="brand" href="/"><img src="icon.png" alt="">StudyTrack</a>
-  <nav><a href="privacy.html">Confidentialité</a></nav>
-</header>
 <main class="doc">
-
   <h1>StudyTrack pour Mac</h1>
-  <p class="muted" id="version">macOS 14 ou plus récent.</p>
-
-  <p>Le chrono dans la barre des menus, tes cours, ton bilan et le mode étude. Les données sont celles de ton iPhone : elles arrivent par ton iCloud, rien à importer.</p>
-
-  <p><a class="button" id="download" href="https://github.com/hchzr/studytrack-site/releases/latest">Télécharger pour Mac</a></p>
-
-  <h2>Installer</h2>
-  <ol>
-    <li>Ouvre le fichier <code>StudyTrack.dmg</code> téléchargé.</li>
-    <li>Glisse <strong>StudyTrack</strong> dans <strong>Applications</strong>, puis ouvre-le depuis Applications.</li>
-    <li>Connecte-toi au <strong>même compte iCloud</strong> que sur ton iPhone : tes cours apparaissent en une minute ou deux.</li>
-  </ol>
-  <p>L'app est signée et vérifiée par Apple (notarisée) : macOS l'ouvre sans avertissement.</p>
-
-  <h2>Mises à jour</h2>
-  <p>Quand une nouvelle version sort, StudyTrack l'annonce dans sa barre des menus et dans Réglages › Général. Télécharge-la ici et remplace l'ancienne dans Applications : tes données ne bougent pas, elles sont dans iCloud.</p>
-
-  <h2>Un problème ?</h2>
-  <p>Menu de la barre des menus › <strong>⋯</strong> › <strong>Signaler un problème…</strong> prépare un courriel avec la version et la fin du journal de l'app. Ou écris à <a href="mailto:studytrack@hczr.ch">studytrack@hczr.ch</a>.</p>
-
+  <p>Les téléchargements pour Mac et Windows sont sur <a href="/#telecharger">la page d'accueil</a>.</p>
 </main>
-<footer class="foot">
-  <span>StudyTrack n'est pas affilié à l'EPFL.</span>
-  <a href="mailto:studytrack@hczr.ch">studytrack@hczr.ch</a>
-  <a href="/">Accueil</a>
-</footer>
-<script>
-  // Le bouton et la version suivent `mac/latest.json`, le même flux que l'app.
-  fetch("mac/latest.json", { cache: "no-store" })
-    .then(function (r) { return r.ok ? r.json() : null; })
-    .then(function (feed) {
-      if (!feed || !feed.url) return;
-      document.getElementById("download").href = feed.url;
-      document.getElementById("version").textContent = "Version " + feed.version + " (" + feed.build + ") · macOS 14 ou plus récent.";
-    })
-    .catch(function () {});
-</script>
 </body>
 </html>

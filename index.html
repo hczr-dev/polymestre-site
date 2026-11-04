@@ -2,74 +2,165 @@
 <html lang="fr">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>StudyTrack</title>
-<meta name="description" content="Une app iPhone pour les étudiant·es de l'EPFL : elle lit tes cours sur Moodle et range ton semestre semaine par semaine.">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>StudyTrack — ton semestre EPFL, semaine par semaine</title>
+<meta name="description" content="StudyTrack lit tes cours EPFL (Moodle, Botafogo, IS-Academia…) et range ton semestre semaine par semaine. Heures honnêtes, mode étude, groupes. iPhone, Mac et Windows, gratuit.">
+<meta name="theme-color" content="#d9dad7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0f1114" media="(prefers-color-scheme: dark)">
+<meta property="og:title" content="StudyTrack">
+<meta property="og:description" content="Ton semestre EPFL, rangé semaine par semaine. iPhone, Mac et Windows.">
+<meta property="og:image" content="https://studytrack.hczr.ch/shots/windows-today.webp">
 <link rel="icon" href="icon.png">
 <link rel="apple-touch-icon" href="icon.png">
-<link rel="stylesheet" href="style.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,300..800&display=swap">
+<link rel="stylesheet" href="site.css">
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
 </head>
-<body class="home">
-<header class="bar">
-  <a class="brand" href="/"><img src="icon.png" alt="">StudyTrack</a>
-  <nav><a href="privacy.html">Confidentialité</a></nav>
+<body>
+<canvas id="slab" aria-hidden="true"></canvas>
+
+<header class="top">
+  <a class="mark" href="/"><img src="icon.png" alt="" width="30" height="30">StudyTrack</a>
+  <nav>
+    <a href="#telecharger">Télécharger</a>
+    <a href="privacy.html">Confidentialité</a>
+  </nav>
 </header>
 
+<ol class="ruler" aria-hidden="true">
+  <li>1</li><li>2</li><li>3</li><li>4</li><li>5</li><li>6</li><li>7</li><li>8</li><li>9</li><li>10</li><li>11</li><li>12</li><li>13</li><li>14</li>
+</ol>
+
 <main>
-  <section class="hero">
-    <div class="hero-text">
-      <h1>Moodle,<br>enfin rangé.</h1>
-      <p class="lede">StudyTrack lit tes cours EPFL sur Moodle et les classe par semaine. Tu ouvres l'app, tu sais quoi faire.</p>
-      <div class="cta">
-        <a class="button" href="mailto:studytrack@hczr.ch?subject=Tester%20StudyTrack">Demander un accès</a>
-        <span class="note">iPhone, gratuit. En test fermé pour l'instant.</span>
-      </div>
+  <section class="hero" data-cam="0">
+    <h1>Moodle,<br>enfin rangé.</h1>
+    <p class="lede">Tes cours EPFL, posés à plat semaine par semaine.</p>
+    <div class="get" data-get>
+      <a class="plat" data-platform="iphone" href="#telecharger">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6.5" y="2.5" width="11" height="19" rx="2.6"/><path d="M10.5 18.5h3"/></svg>
+        <span><b>iPhone</b><small data-tf-label>Bêta, sur demande</small></span>
+      </a>
+      <a class="plat" data-platform="mac" href="#telecharger">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="11.5" rx="1.6"/><path d="M1.5 19.5h21"/></svg>
+        <span><b>Mac</b><small>macOS 14 et plus</small></span>
+      </a>
+      <a class="plat" data-platform="windows" href="#telecharger">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 5.6 10.5 4.6v6.9h-7zM12.5 4.3l8-1.1v8.3h-8zM3.5 12.5h7v6.9l-7-1zM12.5 12.5h8v8.3l-8-1.1z"/></svg>
+        <span><b>Windows</b><small>10 et 11</small></span>
+      </a>
     </div>
-    <figure class="phone hero-phone"><img src="img/today.jpg" alt="L'écran Aujourd'hui : les heures de la semaine, l'horaire, les cours de la semaine 4." width="550" height="1196"></figure>
+    <p class="fine">Gratuit, sans pub. Pas affilié à l'EPFL.</p>
   </section>
 
-  <section class="band">
-    <div class="semester" id="semester" aria-hidden="true"></div>
-    <p class="band-caption">Un semestre type. Une ligne par cours, une case par semaine : un point pour la théorie, un carré pour une série.</p>
-  </section>
-
-  <section class="feature">
-    <figure class="phone"><img src="img/course.jpg" alt="Le cours Algorithms I : les séries, exercice par exercice." width="550" height="1196" loading="lazy"></figure>
-    <div>
-      <p class="kicker">Import</p>
-      <h2>Tu te connectes une fois.</h2>
-      <p>L'app parcourt chacun de tes cours, ouvre les dossiers, lit les PDF des séries et met chaque vidéo, série et rendu dans sa semaine. Une nouvelle série publiée sur Moodle arrive toute seule.</p>
-      <p>Ton mot de passe se tape sur la page de l'EPFL, pas dans l'app.</p>
+  <section class="bay" data-cam="1" id="import">
+    <div class="panel">
+      <h2>Tu te connectes une fois. Le semestre arrive seul.</h2>
+      <p>Moodle, Botafogo, Courseware, Ed Discussion, MediaSpace et ton horaire IS-Academia : chaque vidéo, série, corrigé et rendu se pose dans sa semaine. Une série publiée ce soir est là demain matin.</p>
+      <p class="quiet">Ton mot de passe se tape sur la page de l'EPFL, jamais dans l'app.</p>
+      <p class="span" aria-label="Semaines 1 — 4"><span>Semaines 1 — 4</span></p>
     </div>
+    <figure class="phones">
+      <img class="phone" src="shots/iphone-courses.webp" alt="L'écran Cours sur iPhone : quatre cours, leur avancement et ce qui est en retard." width="640" height="1392" loading="lazy">
+      <img class="phone lift" src="shots/iphone-today.webp" alt="L'écran Aujourd'hui sur iPhone : les heures de la semaine, l'horaire du jour et les cours de la semaine 8." width="640" height="1392" loading="lazy">
+      <figcaption>iPhone · données d'exemple</figcaption>
+    </figure>
   </section>
 
-  <section class="feature flip">
-    <figure class="phone"><img src="img/timer.jpg" alt="Le chrono, sur les séries de CS-250." width="550" height="1196" loading="lazy"></figure>
-    <div>
-      <p class="kicker">Temps d'étude</p>
+  <section class="bay right" data-cam="2" id="heures">
+    <div class="panel">
       <h2>Des heures qui veulent dire quelque chose.</h2>
-      <p>Les cours magistraux comptent d'eux-mêmes. Une séance d'exercices ne compte que si tu lances le chrono : être assis dans la salle ne suffit pas.</p>
-      <p>Tu compares ensuite avec ce que l'EPFL prévoit pour tes crédits.</p>
+      <p>Tu choisis ce qui compte : les cours quand tu y étais (« J'y étais » sur l'horaire), les séances d'exercices si tu veux, le chrono toujours. Jamais compté deux fois.</p>
+      <p>Puis tu compares à la charge que tes crédits ECTS supposent. Les collines de la dalle, ce sont tes semaines lourdes.</p>
+      <p class="span" aria-label="Semaine 7 · 12 h"><span>Semaine 7 · 12 h</span></p>
     </div>
   </section>
 
-  <section class="feature">
-    <figure class="phone"><img src="img/agenda.jpg" alt="L'agenda de la semaine 4 : horaire, sessions et délais." width="550" height="1196" loading="lazy"></figure>
-    <div>
-      <p class="kicker">Groupes et to-do</p>
-      <h2>Le reste, si tu veux.</h2>
-      <p>Avec un groupe, tu vois qui travaille en ce moment et où chacun en est dans les séries. Les messages sont chiffrés de bout en bout.</p>
-      <p>Tes to-do (Rappels, Todoist, TickTick, Notion, Things, Google Tasks) apparaissent dans l'agenda, à côté de ton horaire.</p>
+  <section class="bay" data-cam="3" id="etude">
+    <div class="panel">
+      <h2>Un bureau pour travailler. Rien d'autre.</h2>
+      <ul class="desk">
+        <li><b>La série</b> ouverte à l'exercice, ta copie à côté</li>
+        <li><b>Le cours</b> : Moodle, Botafogo, les vidéos, lus dans l'app</li>
+        <li><b>Claude</b> avec ton abonnement, ou un tuteur gratuit : des indices, pas la solution</li>
+        <li><b>La fiche</b> de révision et les schémas du cours</li>
+        <li><b>Calcul</b> qui trace, <b>musique</b> Apple Music ou Spotify</li>
+      </ul>
+      <p class="quiet">Sur Mac et Windows, le mode étude peut verrouiller tout le reste.</p>
+      <p class="span" aria-label="Semaine 9"><span>Semaine 9</span></p>
+    </div>
+    <figure class="phones">
+      <img class="phone" src="shots/iphone-desk.webp" alt="Le mode étude sur iPhone, sombre : la semaine 2 de Physique, la vidéo à regarder et la série à faire." width="640" height="1392" loading="lazy">
+      <img class="phone lift" src="shots/iphone-tutor.webp" alt="Le tuteur dans le mode étude : un indice pour l'exercice 1.1, sans la solution." width="640" height="1392" loading="lazy">
+      <figcaption>iPhone · mode étude</figcaption>
+    </figure>
+  </section>
+
+  <section class="bay right" data-cam="4" id="groupes">
+    <div class="panel">
+      <h2>À plusieurs, sans se perdre de vue.</h2>
+      <p>Qui travaille en ce moment, et sur quoi. Qui en est où, série par série. Une question sur un exercice, chiffrée de bout en bout. Un chrono commun pour faire les pauses ensemble, et les séances prévues dans l'agenda.</p>
+      <p class="span" aria-label="Semaine 10"><span>Semaine 10</span></p>
     </div>
   </section>
 
-  <section class="privacy-note">
-    <h2>Tes données restent sur ton téléphone.</h2>
-    <p>Pas de compte obligatoire, pas de pub, pas de traceur. Seul ce que tu partages dans un groupe passe par notre serveur. <a href="privacy.html">Le détail</a></p>
+  <section class="bay" data-cam="5" id="partout">
+    <div class="panel">
+      <h2>Sur ton iPhone, ton Mac et ton PC.</h2>
+      <p>La même app, les mêmes données. La synchronisation est chiffrée sur tes appareils : le serveur ne peut rien lire. Pas de compte obligatoire, pas de pub, pas de traceur.</p>
+      <p class="quiet"><a href="privacy.html">Ce qui reste sur ton appareil, ce qui en sort</a></p>
+      <p class="span" aria-label="Semaines 12 — 14"><span>Semaines 12 — 14</span></p>
+    </div>
+    <p class="scene-note" aria-hidden="true">iPhone · Mac · Windows — données d'exemple</p>
+  </section>
+
+  <section class="plan" data-cam="6" aria-hidden="true"></section>
+
+  <section class="download" id="telecharger" data-covers-slab>
+    <h2>Télécharger StudyTrack</h2>
+    <div class="columns">
+      <article data-platform="iphone">
+        <h3>iPhone</h3>
+        <p class="ver" id="ver-iphone">Bêta TestFlight, sur demande</p>
+        <a class="go" id="dl-iphone" href="mailto:studytrack@hczr.ch?subject=Tester%20StudyTrack%20sur%20iPhone">Demander l'accès</a>
+        <ol id="steps-iphone">
+          <li>Écris-nous avec l'adresse de ton identifiant Apple.</li>
+          <li>Installe <a href="https://apps.apple.com/app/testflight/id899247664">TestFlight</a> depuis l'App Store.</li>
+          <li>Ouvre l'invitation reçue et touche « Installer » : les mises à jour arrivent seules.</li>
+        </ol>
+      </article>
+      <article data-platform="mac">
+        <h3>Mac</h3>
+        <p class="ver" id="ver-mac">macOS 14 ou plus récent</p>
+        <a class="go" id="dl-mac" href="https://github.com/hchzr/studytrack-site/releases/latest">Télécharger pour Mac</a>
+        <ol>
+          <li>Ouvre <code>StudyTrack.dmg</code>.</li>
+          <li>Glisse StudyTrack dans Applications, puis ouvre-le.</li>
+          <li>Signée et notarisée par Apple : aucun avertissement. Les mises à jour s'annoncent dans l'app.</li>
+        </ol>
+      </article>
+      <article data-platform="windows">
+        <h3>Windows</h3>
+        <p class="ver" id="ver-win">Windows 10 et 11, 64 bits</p>
+        <a class="go" id="dl-win" href="https://github.com/hchzr/studytrack-site/releases/latest">Télécharger pour Windows</a>
+        <ol>
+          <li>Lance <code id="exe-name">StudyTrack-setup.exe</code>.</li>
+          <li>Si SmartScreen s'interpose : « Informations complémentaires », puis « Exécuter quand même ».</li>
+          <li>Pour un déploiement géré : <a id="dl-msi" href="https://github.com/hchzr/studytrack-site/releases/latest">l'installeur MSI</a>.</li>
+        </ol>
+      </article>
+    </div>
+    <p class="help">Un problème ? Dans l'app : Réglages › Signaler un problème, ou <a href="mailto:studytrack@hczr.ch">studytrack@hczr.ch</a>.</p>
   </section>
 
   <section class="english" lang="en">
-    <p><strong>In English.</strong> StudyTrack is an iPhone app for EPFL students. It reads your courses on Moodle and sorts lectures, exercise sheets and deadlines by week, and it tracks the time you actually study. Your data stays on your device. <a href="privacy.html#en">Privacy policy</a></p>
+    <p><b>In English.</b> StudyTrack is a free app for EPFL students on iPhone, Mac and Windows. It reads your courses (Moodle, Botafogo, Courseware, Ed, IS-Academia) and lays out lectures, exercise sheets and deadlines week by week, counts the hours you actually study, and gives you a focused study desk and study groups. Sync is end-to-end encrypted. <a href="privacy.html#en">Privacy policy</a></p>
   </section>
 </main>
 
@@ -80,19 +171,7 @@
   <a href="terms.html">Conditions</a>
 </footer>
 
-<script>
-  // La grille du semestre : elle se remplit en vague, comme pendant l'import.
-  const colors = ["#5B4FB3", "#2E7A8C", "#2F7356", "#A66A2C"];
-  const grid = document.getElementById("semester");
-  for (let row = 0; row < 4; row++) {
-    for (let week = 0; week < 14; week++) {
-      const cell = document.createElement("span");
-      cell.style.setProperty("--c", colors[row]);
-      cell.style.setProperty("--d", (0.3 + week * 0.07 + row * 0.12).toFixed(2) + "s");
-      cell.className = (week === 6 || week === 13) ? "t" : "s";
-      grid.appendChild(cell);
-    }
-  }
-</script>
+<script type="module" src="slab.js"></script>
+<script src="get.js" defer></script>
 </body>
 </html>
