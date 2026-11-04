@@ -38,7 +38,8 @@ for st, r in polys:
 def box(cx, cz, w, dd, deg):
     a = math.radians(deg); c, s = math.cos(a), math.sin(a)
     return [(cx + u * c - v * s, cz + u * s + v * c) for u, v in ((-w / 2, -dd / 2), (w / 2, -dd / 2), (w / 2, dd / 2), (-w / 2, dd / 2))]
-for b in (box(25.4, 8.5, 7, 5.4, -35), box(23.8, 0.4, 4.2, 6, 0)): d.polygon([px(p) for p in b], fill=9)
+d.polygon([px(p) for p in [(26.6, 3.9), (29.6, 2.4), (29.8, -1.6), (26.3, -1.4)]], fill=7)   # le foyer vitré
+for b in (box(25.4, 8.5, 5.6, 3.6, -35), box(23.8, 0.4, 3.7, 5.7, 0)): d.polygon([px(p) for p in b], fill=9)
 d.polygon([px(p) for p in [(4.85, 26.6), (4.91, 21.18), (6.3, 21.19), (6.24, 26.61)]], fill=15)   # l'aile basse de BI
 a = np.asarray(img)
 grown = np.asarray(img.filter(ImageFilter.MaxFilter(5)))

@@ -1,6 +1,6 @@
 # Les murs du campus, pour y construire les façades en 3D : les faces verticales de campus.drc sont
 # regroupées par plan, découpées là où leur hauteur change, et orientées vers l'extérieur.
-# Sortie : walls.bin (float32 : x0, z0, x1, z1, y0, y1, nx, nz, famille). Usage : walls.py <geo>
+# Sortie : walls.bin (float32 : x0, z0, x1, z1, y0, y1, nx, nz, famille, hauteur du pied sur le sol). Usage : walls.py <geo>
 import sys
 import numpy as np, DracoPy
 from PIL import Image, ImageDraw
@@ -26,6 +26,12 @@ styles = np.asarray(Image.open(f"{GEO}/styles.png").convert("L"))
 def style(x, z):
     i = int((x / 220 + 0.5) * 1024); j = int((0.5 - z / 220) * 1024)
     return int(styles[j, i]) if 0 <= i < 1024 and 0 <= j < 1024 else 0
+import json
+meta = json.load(open(f"{GEO}/meta.json")); LN = meta["layers"]["near"]; gN = LN["grid"]
+hN = np.fromfile(f"{GEO}/near.bin", dtype="<i2").reshape(gN, gN) * LN["scale"]
+def terrain(x, z):
+    u = (x - LN["cx"] / 6) / (LN["size"] / 6) + 0.5; w = 0.5 - (z - LN["cz"] / 6) / (LN["size"] / 6)
+    return hN[min(gN - 1, max(0, int(w * (gN - 1)))), min(gN - 1, max(0, int(u * (gN - 1))))] / 6 * 1.3
 v = np.abs(n[:, 1]) < 0.08
 tri, n = tri[v], n[v]
 ang = np.mod(np.arctan2(n[:, 2], n[:, 0]), np.pi)              # le plan, sans son sens
@@ -65,7 +71,7 @@ for a_, off, (u0, u1, lo, hi) in out:
     s = style(mx - nx * 0.5, mz - nz * 0.5)
     x0, z0 = np.cos(a_ * np.radians(2)) * off + tx * u0, np.sin(a_ * np.radians(2)) * off + tz * u0
     x1, z1 = np.cos(a_ * np.radians(2)) * off + tx * u1, np.sin(a_ * np.radians(2)) * off + tz * u1
-    rows.append((x0, z0, x1, z1, lo, hi, nx, nz, s))
+    rows.append((x0, z0, x1, z1, lo, hi, nx, nz, s, lo - terrain(mx, mz)))
 A = np.array(rows, dtype="<f4"); A.tofile(f"{GEO}/walls.bin")
 L = np.hypot(A[:, 2] - A[:, 0], A[:, 3] - A[:, 1]) * 6; H = (A[:, 5] - A[:, 4]) * 6
 print("murs", len(A), "Ko", A.nbytes // 1024)

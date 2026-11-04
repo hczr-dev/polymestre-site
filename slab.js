@@ -289,9 +289,9 @@ campusMat.onBeforeCompile = (shader) => {
         } else if (st == 8.0) {      // BC : métal sombre, hauts vitrages
           skin = vec3(0.03, 0.032, 0.036); fh = 0.62; cw = 0.2; rowA = 0.08; rowB = 0.92; fill = 0.72; blinds = 0.0; cover = 0.45; weather = 0.1;
         } else if (st == 9.0) {      // RTS : boîtes minérales taupe, très grandes baies
-          skin = vec3(0.34, 0.3, 0.25) * dim; fh = 1.0; cw = 0.92; rowA = 0.2; rowB = 0.84; fill = 0.8; blinds = 0.0; cover = 0.4; weather = 0.4;
+          skin = vec3(0.82, 0.81, 0.78) * dim; fh = 0.62; cw = 1.0; rowA = 0.27; rowB = 0.76; fill = 0.7; blinds = 0.0; cover = 0.26; weather = 0.1;
         } else if (st == 10.0) {     // RTS : la dalle suspendue, vitrée, traversée de poutres Warren
-          skin = vec3(0.55) * dim; fh = 1.5; cw = 2.0; rowA = 0.07; rowB = 0.93; fill = 1.0; blinds = 0.0; cover = 0.75; weather = 0.2;
+          skin = vec3(0.8) * dim; fh = 1.0; cw = 0.4; rowA = 0.07; rowB = 0.93; fill = 1.0; blinds = 0.0; cover = 0.75; weather = 0.2;
           pane0 = vec3(0.08, 0.12, 0.14); pane1 = vec3(0.2, 0.25, 0.26);
         } else if (st == 11.0) {     // ArtLab : bois sous un long toit sombre
           skin = vec3(0.33, 0.19, 0.09) * dim; fh = 1.0; cw = 0.5; rowA = 0.05; rowB = 0.92; fill = 0.86; blinds = 0.0; cover = 0.5; weather = 0.3;
@@ -337,12 +337,6 @@ campusMat.onBeforeCompile = (shader) => {
           float m3 = 1.0 - band(fract((fx - 0.1) / 0.8 * 3.0), 0.04, 0.96, wc * 3.0);
           pane = mix(pane, skin * 0.5, m3);
         }
-        if (st == 10.0) {
-          // Les poutres Warren : des diagonales claires dans le verre.
-          float tri = abs(fract(run / 2.0) - 0.5) * 2.0;
-          float truss = 1.0 - smoothstep(0.0, 0.03 + wl, abs(tri - fy));
-          pane = mix(pane, vec3(0.68, 0.68, 0.66) * dim, truss);
-        }
         float blend = st == 4.0 ? 0.14 : cover;
         vec3 far = mix(skin, mix(pane0, pane1, 0.5), blend);
         win *= step(0.3 * step(st, 0.5), above);
@@ -350,14 +344,13 @@ campusMat.onBeforeCompile = (shader) => {
         gGlass = win * detail;
         gGloss = win * (1.0 - blind) * detail * 0.85;
         gTilt = (vec3(r1, r2, r3) - 0.5) * 0.09 * gGloss;
-        gLit = win * step(st == 10.0 ? 0.0 : 0.55, r2) * uNight;
-        // Sur les photos, la RTS est un chantier : son toit est dessiné, à sheds pour la dalle.
-        if (st == 9.0) top = vec3(0.4, 0.39, 0.37) * dim;
+        gLit = win * step(0.72, r2) * (0.4 + 0.8 * r3) * uNight;
+        if (st == 10.0 && above > 1.0) { wall = vec3(0.14, 0.2, 0.24) * dim; gGlass = 1.0; gGloss = 0.8; gTilt = vec3(0.0); gLit = 0.0; }
+        // Sur les photos, la RTS est un chantier : ses toits sont dessinés. Le dessous de la dalle est en bois.
+        if (st == 9.0) top = vec3(0.72, 0.71, 0.69) * dim;
         if (st == 10.0) {
-          float sd = dot(vLocal.xz, vec2(0.82, 0.57)) / 1.1, sw = fwidth(sd);
-          float shed = band(fract(sd), 0.62, 0.98, sw);
-          shed = mix(0.36, shed, 1.0 - smoothstep(0.2, 0.5, sw));
-          top = mix(vec3(0.55, 0.55, 0.54), vec3(0.12, 0.17, 0.2), shed) * dim;
+          top = vec3(0.78, 0.77, 0.74) * dim;
+          if (above < 0.05) top = vec3(0.42, 0.25, 0.12) * dim * (0.9 + 0.2 * noise(vLocal.xz * vec2(14.0, 1.2)));
         }
         top = mix(top, vec3(dot(top, vec3(0.333))), 0.12);
       }
@@ -366,7 +359,7 @@ campusMat.onBeforeCompile = (shader) => {
     .replace("#include <normal_fragment_maps>", "#include <normal_fragment_maps>\nnormal = normalize(normal + gTilt);")
     .replace("#include <roughnessmap_fragment>", "#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, 0.1, gGloss);")
     .replace("#include <metalnessmap_fragment>", "#include <metalnessmap_fragment>\nmetalnessFactor = mix(metalnessFactor, 0.75, gGloss);")
-    .replace("#include <emissivemap_fragment>", "#include <emissivemap_fragment>\ntotalEmissiveRadiance += vec3(1.0, 0.72, 0.42) * gLit * 1.3;");
+    .replace("#include <emissivemap_fragment>", "#include <emissivemap_fragment>\ntotalEmissiveRadiance += vec3(1.0, 0.64, 0.32) * gLit * 0.34;");
 };
 const draco = new DRACOLoader().setDecoderPath("https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/libs/draco/");
 const styleMap = { value: null };
@@ -589,15 +582,12 @@ function panelled(open) {
   return m.done();
 }
 function rtsBox() {
-  // RTS, 7,20 × 3,80 m : béton taupe, baie profonde cerclée de noir, châssis blancs.
-  const m = new Module();
-  m.pillow(0, 0, 7.2, 3.8, 0.001, 0, 0.42, TAUPE, RENDER, [0.62, 0.55, 6.58, 3.2, 0.001], 0, 1);
-  m.box(0.62, 0.55, 0.14, 6.58, 0.66, 0.16, BLACK); m.box(0.62, 3.09, 0.14, 6.58, 3.2, 0.16, BLACK);
-  m.box(0.62, 0.55, 0.14, 0.73, 3.2, 0.16, BLACK); m.box(6.47, 0.55, 0.14, 6.58, 3.2, 0.16, BLACK);
-  m.box(0.73, 0.66, 0.05, 6.47, 0.74, 0.14, WHITE); m.box(0.73, 3.01, 0.05, 6.47, 3.09, 0.14, WHITE);
-  m.box(0.73, 2.34, 0.05, 6.47, 2.4, 0.14, WHITE);
-  for (let i = 0; i <= 6; i++) { const x = 0.73 + i * (5.74 / 6); m.box(x - 0.035, 0.66, 0.05, x + 0.035, 3.09, 0.14, WHITE); }
-  m.pane(0.73, 0.66, 6.47, 3.09, 0.07);
+  // RTS, 6,00 × 3,70 m : enduit blanc lisse, une baie de 4,20 m à quatre vantaux, châssis blancs.
+  const m = new Module(), W = "#eceae5";
+  m.pillow(0, 0, 6, 3.7, 0.001, 0, 0.16, W, RENDER, [0.9, 1.0, 5.1, 2.8, 0.001], 0, 1);
+  m.box(0.9, 1.0, 0.03, 5.1, 1.06, 0.09, "#dcdbd6"); m.box(0.9, 2.74, 0.03, 5.1, 2.8, 0.09, "#dcdbd6");
+  for (const x of [0.93, 1.95, 3, 4.05, 5.07]) m.box(x - 0.03, 1.0, 0.03, x + 0.03, 2.8, 0.09, "#dcdbd6");
+  m.pane(0.9, 1.0, 5.1, 2.8, 0.05);
   return m.done();
 }
 function curtain(w, h, color, slim) {
@@ -623,29 +613,33 @@ function timber() {
   for (let x = 0.05; x < 1.2; x += 0.2) m.box(x, 0, 0.05, x + 0.13, 3, 0.13, "#7d5730");
   return m.done();
 }
-function warren() {
-  // La dalle RTS, sur toute sa hauteur : montants et diagonales d'une poutre Warren.
-  const m = new Module();
-  m.box(0, 0, 0, 6, 0.5, 0.3, "#c9c7c1"); m.box(0, 8.5, 0, 6, 9, 0.3, "#c9c7c1");
-  const d = Math.hypot(3, 8), a = Math.atan2(3, 8);
-  for (const [x, s] of [[1.5, 1], [4.5, -1]]) {
-    const g = new THREE.BoxGeometry(0.28, d, 0.22);
-    g.rotateZ(-a * s); g.translate(x, 4.5, 0.2);
-    m.paint(g, "#d6d4cf", PLAIN);
-  }
-  m.pane(0, 0.5, 6, 8.5, 0.06);
+function rtsSlab() {
+  // La dalle RTS, 2,40 × 6,00 m : bandeau blanc, longue bande de verre, bandeau blanc. Les poutres
+  // Warren sont à l'intérieur, derrière le verre.
+  const m = new Module(), W = "#eae8e3";
+  m.box(0, 0, 0, 2.4, 1.3, 0.1, W, RENDER); m.box(0, 4.9, 0, 2.4, 6, 0.1, W, RENDER);
+  m.box(0, 1.3, 0.02, 0.07, 4.9, 0.14, "#c9cbcb");
+  m.box(0, 3.55, 0.02, 2.4, 3.61, 0.12, "#c9cbcb");
+  m.pane(0, 1.3, 2.4, 4.9, 0.04);
   return m.done();
 }
 function redTop() {
-  // Le dernier étage des blocs ME, MA, CM : ossature d'acier rouge, vitrage toute hauteur, grand
-  // auvent noir porté par des bracons.
-  const m = new Module(), RED = "#b4371f", BLK = "#15161a";
-  m.box(0, 0, 0, 7.2, 0.5, 0.34, ALU);
-  for (const x of [0.5, 2.55, 4.6, 6.65]) { m.box(x - 0.09, 0.5, 0.02, x + 0.09, 3.3, 0.2, RED); m.box(x - 0.05, 3.15, 0.2, x + 0.05, 3.25, 1.5, RED, PLAIN, 0.34); }
-  for (const x of [1.53, 3.57, 5.62]) m.box(x - 0.03, 0.5, 0.02, x + 0.03, 3.3, 0.08, "#2b2d30");
-  m.box(0, 3.3, 0, 7.2, 3.5, 2.1, BLK);
-  m.box(0, 3.22, 1.95, 7.2, 3.3, 2.1, BLK);
-  m.pane(0, 0.5, 7.2, 3.3, 0.03);
+  // L'étage en retrait des blocs ME, MA, CM, PH : ossature d'acier rouge, vitrage toute hauteur à
+  // traverse, grand auvent noir porté par une poutre triangulée.
+  const m = new Module(), RED = "#b4371f", BLK = "#14151a", STEEL = "#23252a";
+  m.box(0, 0, 0, 7.2, 0.35, 0.16, RED);
+  for (const x of [0.5, 2.55, 4.6, 6.65]) {
+    m.box(x - 0.1, 0.35, 0.02, x + 0.1, 3.4, 0.22, RED);
+    // Le bracon, du poteau vers le bord de l'auvent, et le tirant au-dessus.
+    const strut = new THREE.BoxGeometry(0.08, 0.08, 1.9);
+    strut.rotateX(0.38); strut.translate(x, 3.05, 1.0);
+    m.paint(strut, STEEL, PLAIN);
+  }
+  for (const x of [1.03, 1.53, 2.03, 3.07, 3.57, 4.07, 5.12, 5.62, 6.12]) m.box(x - 0.025, 0.35, 0.02, x + 0.025, 3.4, 0.08, "#2b2d30");
+  m.box(0, 2.45, 0.02, 7.2, 2.5, 0.08, "#2b2d30");
+  m.box(0, 3.4, 0, 7.2, 3.62, 2.1, BLK);
+  m.box(0, 3.3, 1.95, 7.2, 3.4, 2.1, STEEL);
+  m.pane(0, 0.35, 7.2, 3.4, 0.03);
   return m.done();
 }
 function mxBay() {
@@ -731,16 +725,27 @@ const glassMat = new THREE.MeshStandardMaterial({ color: "#3c4a55", roughness: 0
 glassMat.onBeforeCompile = (shader) => {
   shader.uniforms.uNight = night;
   shader.vertexShader = shader.vertexShader
-    .replace("#include <common>", "#include <common>\nvarying float vId;")
+    .replace("#include <common>", "#include <common>\nvarying float vId;\nvarying vec2 vPane;")
     .replace("#include <begin_vertex>", `#include <begin_vertex>
       vId = float(gl_InstanceID);
+      vPane = position.xy * ${UNIT.toFixed(1)};
       // Chaque vitre penche d'un rien : elle n'attrape pas le même morceau de ciel que sa voisine.
       vNormal = normalize(vNormal + normalMatrix * vec3((vec2(fract(sin(vId * 12.99) * 437.5), fract(sin(vId * 78.23) * 437.5)) - 0.5) * 0.05, 0.0));`);
   shader.fragmentShader = shader.fragmentShader
-    .replace("#include <common>", "#include <common>\nuniform float uNight;\nvarying float vId;")
+    .replace("#include <common>", `#include <common>
+      uniform float uNight; varying float vId; varying vec2 vPane;
+      float gh(vec2 p) { return fract(sin(dot(p, vec2(41.3, 289.1))) * 43758.5453); }`)
     .replace("#include <emissivemap_fragment>", `#include <emissivemap_fragment>
-      float lit = step(0.5, fract(sin(vId * 91.7) * 4375.5));
-      totalEmissiveRadiance += vec3(1.0, 0.72, 0.42) * lit * uNight * 0.9;
+      // La nuit, fenêtre par fenêtre : un bureau sur quatre allumé, chacun à sa lumière, plus claire
+      // vers le plafond, parfois derrière un store à moitié baissé.
+      vec2 room = vec2(floor(vPane.x / 1.8), vId);
+      float on = step(0.74, gh(room));
+      float tone = gh(room + 3.1), level = 0.1 + 0.3 * gh(room + 7.7);
+      vec3 lamp = tone < 0.55 ? vec3(1.0, 0.6, 0.27) : tone < 0.85 ? vec3(1.0, 0.76, 0.5) : vec3(0.72, 0.84, 1.0);
+      float h = fract(vPane.y / 3.6);
+      float blind = step(0.6, gh(room + 11.0)) * smoothstep(0.42, 0.46, h);
+      float falloff = (0.45 + 0.55 * h) * (1.0 - 0.75 * blind);
+      totalEmissiveRadiance += lamp * on * level * falloff * uNight;
       diffuseColor.rgb *= 0.8 + 0.5 * fract(sin(vId * 33.1) * 437.5);`);
 };
 
@@ -763,11 +768,11 @@ rolexGlassMat.onBeforeCompile = (shader) => {
       float t = abs(plane - vIn.y) / max(abs(ray.y), 0.004);
       vec3 hit = vIn + ray * t;
       float strip = smoothstep(0.42, 0.5, abs(fract(hit.x / 0.9) - 0.5)) * up;
-      vec3 room = mix(vec3(0.34, 0.33, 0.31), vec3(0.72, 0.71, 0.68), up) + strip * 1.2;
-      room *= exp(-t * 0.22);
+      vec3 room = mix(vec3(0.2, 0.17, 0.13), vec3(0.3, 0.27, 0.22), up) + strip * vec3(1.0, 0.86, 0.62);
+      room *= exp(-t * 0.3);
       float facing = abs(dot(normalize(vViewPosition), normal));
       float see = (1.0 - pow(1.0 - facing, 3.0));
-      totalEmissiveRadiance += room * see * mix(0.16, 0.95, uNight) * vec3(1.0, 0.9, 0.76);`);
+      totalEmissiveRadiance += room * see * mix(0.3, 1.0, uNight);`);
 };
 const FASCIA = 0.05, SLAB = 0.12, RECESS = 0.04;   // la coupe du Rolex, sous le toit (unités)
 const facadeGroup = new THREE.Group();
@@ -786,14 +791,14 @@ const facadesReady = Promise.all([loadBin("geo/walls.bin", Float32Array), loadBi
   };
   const kits = {
     aluHi: aluminium(true), aluLo: aluminium(false), tile: ceramic(), bmA: panelled(true), bmB: panelled(false), rts: rtsBox(),
-    top: redTop(), mx: mxBay(), plain: plainWall(), post: steelPost(), swiss: curtain(1.8, 3.6, "#0a0c0f", 0.09), bc: darkMetal(), wood: timber(), truss: warren(), shutter: shutter(), rib: ribbed(), mull: mullion(),
+    top: redTop(), mx: mxBay(), plain: plainWall(), post: steelPost(), swiss: curtain(1.8, 3.6, "#0a0c0f", 0.09), bc: darkMetal(), wood: timber(), slab: rtsSlab(), shutter: shutter(), rib: ribbed(), mull: mullion(),
   };
-  const size = { top: [7.2, 3.75], mx: [3.6, 3.6], aluHi: [7.2, 3.75], aluLo: [7.2, 3.75], tile: [3.6, 3.6], bmA: [6, 3.3], rts: [7.2, 3.8], swiss: [1.8, 3.6], bc: [3.6, 3.7], wood: [1.2, 3], truss: [6, 9] };
+  const size = { top: [7.2, 3.75], mx: [3.6, 3.6], aluHi: [7.2, 3.75], aluLo: [7.2, 3.75], tile: [3.6, 3.6], bmA: [6, 3.3], rts: [6, 3.7], swiss: [1.8, 3.6], bc: [3.6, 3.7], wood: [1.2, 3], slab: [2.4, 6] };
   const BI = ["#d98a12", "#2a2c30", "#c9241a", "#2a2c30", "#e0b21a", "#14613a", "#2a2c30", "#14306f"];
   let seedF = 11;
   const rnd = () => ((seedF = (seedF * 16807) % 2147483647) / 2147483647);
-  for (let i = 0; i < a.length; i += 9) {
-    const [x0, z0, x1, z1, y0, y1, nx, nz, s] = a.subarray(i, i + 9);
+  for (let i = 0; i < a.length; i += 10) {
+    const [x0, z0, x1, z1, y0, y1, nx, nz, s, lift] = a.subarray(i, i + 10);
     if (s === 0) continue;
     const mx = (x0 + x1) / 2, mz = (z0 + z1) / 2, dist = Math.hypot(mx, mz);
     if (dist > LO) continue;
@@ -824,7 +829,9 @@ const facadesReady = Promise.all([loadBin("geo/walls.bin", Float32Array), loadBi
       if (tall < 0.45 || len < 0.5) continue;
       if (s === 14 && len < 1.1) { push(`plain:${cell}`, kits.plain, frame(0, y0, len * UNIT, tall * UNIT, 1), 0xd8c7a4); continue; }
       const tier = dist < HI ? "aluHi" : "aluLo";
-      grid(tier, (r, c, ny) => (s === 12 && r === ny - 1 && ny > 1 ? `top:${cell}` : `${tier}:${cell}`));
+      // L'étage rouge seulement là où le maillage a un étage en retrait : un mur court, posé sur un toit.
+      const setback = s === 12 && lift > 1.2 && tall < 1.2;
+      grid(setback ? "top" : tier, () => (setback ? `top:${cell}` : `${tier}:${cell}`));
     } else if (s === 13) {
       if (tall < 0.45) continue;
       grid("mx", () => `mx:${cell}`);
@@ -842,7 +849,8 @@ const facadesReady = Promise.all([loadBin("geo/walls.bin", Float32Array), loadBi
     } else if (s === 11) {
       grid("wood", () => `wood:${cell}`);
     } else if (s === 10) {
-      grid("truss", () => `truss:${cell}`);
+      if (tall < 0.7) continue;                        // les sheds : leur verre vient du maillage
+      grid("slab", () => `slab:${cell}`);
     } else if (s === 4) {
       // ME D : des volets indépendants, chacun penché à sa façon, à distance du mur ; un sur quatre
       // manque et laisse voir le verre.

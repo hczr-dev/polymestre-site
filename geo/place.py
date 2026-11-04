@@ -93,8 +93,8 @@ np.array(canopies, dtype="<f4").tofile(f"{GEO}/canopies.bin")
 pts = np.c_[x, y, z]
 owner_v = comp.copy()
 # La RTS (OFFICE Kersten Geers David Van Severen, 2014-2025) : swissBUILDINGS3D n'en a que des
-# fragments de chantier, on les retire. Quatre boîtes portent une dalle double hauteur suspendue à
-# 8 m au-dessus du sol. Deux boîtes sont dans OSM, deux relevées sur la photo aérienne.
+# fragments de chantier, on les retire. D'après les plans et coupes publiés par les architectes :
+# quatre boîtes (18, 20, 23 et 30 m) portent une dalle suspendue à 8 m, coiffée de sheds.
 site = (21.5, 39.3, -11.2, 12.7)
 stub = np.zeros(len(ids), bool)
 for k, (m, *_rest) in enumerate(info):
@@ -106,8 +106,9 @@ def box(cx, cz, w, d, deg):
     a = math.radians(deg); c, s_ = math.cos(a), math.sin(a)
     return [(cx + u * c - v * s_, cz + u * s_ + v * c) for u, v in ((-w / 2, -d / 2), (w / 2, -d / 2), (w / 2, d / 2), (-w / 2, d / 2))]
 WING = np.array([(4.85, 26.6), (4.91, 21.18), (6.3, 21.19), (6.24, 26.61)])
-EXTRA = [("BI aile", list(map(tuple, WING)), (1.9 - float(ground(WING[:, 0].copy(), WING[:, 1].copy()).min())) * UNIT), ("RTS boîte nord", box(25.4, 8.5, 7, 5.4, -35), 24.0), ("RTS boîte ouest", box(23.8, 0.4, 4.2, 6, 0), 18.0)]
-SPEC = {"RTS (Radio Télévision Suisse) - Lausanne-Ecublens)": (8.0, 17.0), "RTS - Emergence Sud": (0, 34.0), "RTS - Emergence Est": (0, 30.0)}
+RTS_FOYER = [(26.6, 3.9), (29.6, 2.4), (29.8, -1.6), (26.3, -1.4)]
+EXTRA = [("RTS foyer", RTS_FOYER, 7.8), ("BI aile", list(map(tuple, WING)), (1.9 - float(ground(WING[:, 0].copy(), WING[:, 1].copy()).min())) * UNIT), ("RTS boîte nord", box(25.4, 8.5, 5.6, 3.6, -35), 23.0), ("RTS boîte ouest", box(23.8, 0.4, 3.7, 5.7, 0), 20.0)]
+SPEC = {"RTS (Radio Télévision Suisse) - Lausanne-Ecublens)": (8.0, 14.0), "RTS - Emergence Sud": (0, 30.0), "RTS - Emergence Est": (0, 18.0)}
 
 # Ce qui manque : un plan au mètre de tout ce que couvre le modèle.
 EXT = 1200; S = 2 * EXT
@@ -122,6 +123,28 @@ def scene_m(lat, lon):
     return (gx - GX) * M19, (GY - gy) * M19
 o = json.load(open(OSM)); els = o["elements"] if isinstance(o, dict) else o
 added = []; nv = len(pts); newp, newt, newo = [], [], []; nid = len(ids)
+def sheds(r, level):
+    """Les sheds de la dalle RTS : de vrais prismes, découpés par le contour de la dalle."""
+    global nid
+    ax_ = np.array([0.82, 0.57]); ay_ = np.array([-0.57, 0.82]); pitch, rise = 7.2 / UNIT, 2.6 / UNIT
+    gy = ground(r[:, 0].copy(), r[:, 1].copy()).min() - 0.06 + level / UNIT
+    q = np.roll(r, -1, 0); s0, s1 = r @ ax_, q @ ax_; t0, t1 = r @ ay_, q @ ay_
+    for k in range(int((s0.min()) // pitch), int(s0.max() // pitch) + 1):
+        a_ = (k + 0.08) * pitch; b_ = (k + 0.92) * pitch
+        def chord(s_):
+            c_ = (s0 - s_) * (s1 - s_) < 0
+            if c_.sum() < 2: return None
+            hit = np.sort(t0[c_] + (s_ - s0[c_]) / (s1[c_] - s0[c_]) * (t1[c_] - t0[c_]))
+            return hit[0], hit[-1]
+        ca, cb = chord(a_), chord(b_)
+        if not ca or not cb: continue
+        lo, hi = max(ca[0], cb[0]) + 0.15, min(ca[1], cb[1]) - 0.15
+        if hi - lo < 0.6: continue
+        P_ = lambda s_, t_, y_: [*(ax_ * s_ + ay_ * t_)[[0]], y_, *(ax_ * s_ + ay_ * t_)[[1]]]
+        v_ = np.array([P_(a_, lo, gy), P_(b_, lo, gy), P_(b_, lo, gy + rise), P_(a_, hi, gy), P_(b_, hi, gy), P_(b_, hi, gy + rise)])
+        off = nv + sum(len(a) for a in newp)
+        newp.append(v_); newo.append(np.full(6, nid)); nid += 1
+        newt.append(np.array([[0, 1, 2], [3, 5, 4], [0, 2, 5], [0, 5, 3], [1, 4, 5], [1, 5, 2]]) + off)
 def prism(r, low, high):
     """Un volume extrudé : murs, toit, et dessous s'il est en l'air (hauteurs en mètres depuis le sol)."""
     global nid
@@ -153,6 +176,7 @@ for e in els:
     if spec is None and plan[by:by + bh, bx:bx + bw][mask].mean() > 0.2: continue
     levels = float(t.get("building:levels", 3)); h = float(t.get("height", levels * 3.4))
     prism(ring / UNIT, *(spec or (0, h)))
+    if t.get("name", "").startswith("RTS (Radio"): sheds(ring / UNIT, 14.0)
     added.append((t.get("name"), t.get("addr:street"), round(float(ring[:, 0].mean())), round(float(ring[:, 1].mean())), int(area), levels))
 for name, ring, h in EXTRA:
     prism(np.array(ring), 0, h); added.append((name, None, 0, 0, 99999, h))
