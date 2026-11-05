@@ -117,13 +117,14 @@ main, .top, .foot { position: relative; z-index: 1; }
   align-content: center; column-gap: clamp(24px, 5vw, 80px); row-gap: 34px; padding: 16svh var(--gutter);
 }
 .bay::before {
-  content: ""; position: absolute; inset: 0 52% 0 0; z-index: -1;
-  background: linear-gradient(90deg, rgba(9, 11, 15, 0.8), rgba(9, 11, 15, 0.58) 62%, transparent);
+  content: ""; position: absolute; inset: 0 44% 0 0; z-index: -1;
+  /* Une ombre qui s'efface dans tous les sens : aucun bord net ne coupe l'écran. */
+  background: radial-gradient(ellipse 100% 46% at 0% 50%, rgba(9, 11, 15, 0.82), rgba(9, 11, 15, 0.55) 55%, transparent);
 }
 .bay .panel, .bay figure { grid-column: 1; }
 .bay figure { justify-self: start; }
 .bay.right { grid-template-columns: minmax(0, 1fr) minmax(0, 30rem); }
-.bay.right::before { inset: 0 0 0 52%; background: linear-gradient(270deg, rgba(9, 11, 15, 0.8), rgba(9, 11, 15, 0.58) 62%, transparent); }
+.bay.right::before { inset: 0 0 0 44%; background: radial-gradient(ellipse 100% 46% at 100% 50%, rgba(9, 11, 15, 0.82), rgba(9, 11, 15, 0.55) 55%, transparent); }
 .bay.right .panel, .bay.right figure { grid-column: 2; }
 .bay.right figure { justify-self: end; }
 .bay .iphone { --w: min(100%, 36svh, 250px); }
