@@ -1,4 +1,5 @@
 <!doctype html>
+<!-- Page générée par i18n/build.py : modifie i18n/strings.toml ou i18n/index.html, pas ce fichier. -->
 <html lang="fr">
 <head>
 <meta charset="utf-8">
@@ -9,7 +10,29 @@
 <meta name="theme-color" content="#0f1114" media="(prefers-color-scheme: dark)">
 <meta property="og:title" content="StudyTrack">
 <meta property="og:description" content="Tes cours EPFL au même endroit, et chaque matin ce qu'il reste à faire. iPhone, Mac et Windows.">
+<meta property="og:locale" content="fr_CH">
 <meta property="og:image" content="https://studytrack.hczr.ch/shots/windows-today.webp">
+<link rel="alternate" hreflang="fr" href="https://studytrack.hczr.ch/">
+<link rel="alternate" hreflang="en" href="https://studytrack.hczr.ch/en.html">
+<link rel="alternate" hreflang="x-default" href="https://studytrack.hczr.ch/">
+<script>
+// La langue : un navigateur qui ne parle pas français arrive sur la version anglaise, sauf si la
+// personne a choisi le français avec le lien FR/EN ; ce choix est retenu dans ce navigateur.
+(function () {
+  try {
+    document.addEventListener("click", function (e) {
+      var a = e.target.closest && e.target.closest("a[data-lang]");
+      if (a) { try { localStorage.setItem("lang", a.dataset.lang); } catch (_) {} }
+    });
+    var saved = localStorage.getItem("lang"), langs = navigator.languages || [navigator.language || ""];
+    var english = saved ? saved === "en"
+      : !/bot|crawl|spider|slurp|preview/i.test(navigator.userAgent) && !langs.some(function (l) { return /^fr\b/i.test(l); });
+    if (document.documentElement.lang === "fr" && english) {
+      location.replace("en.html" + location.hash);
+    }
+  } catch (_) {}
+})();
+</script>
 <link rel="icon" href="icon.png">
 <link rel="apple-touch-icon" href="icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -19,7 +42,7 @@
 </head>
 <body>
 <canvas id="slab" aria-hidden="true"></canvas>
-<div class="intro-card" aria-hidden="true">
+<div class="intro-card" aria-hidden="true" data-coords="46,43° N · 6,52° E|46,52° N · 6,57° E|46,5184° N · 6,5681° E" data-places="Lac Léman|Ecublens|EPFL">
   <span class="coords">46,43° N · 6,52° E</span>
   <span class="place">Lac Léman</span>
 </div>
@@ -27,16 +50,18 @@
 <p class="geo-credit">Images © swisstopo · Sentinel-2 cloudless 2020, EOX · bâtiments © swisstopo</p>
 
 <header class="top">
-  <a class="mark" href="/"><img src="logo-120.png" alt="" width="30" height="30">StudyTrack</a>
+  <a class="mark" href="./"><img src="logo-120.png" alt="" width="30" height="30">StudyTrack</a>
   <nav>
+    <a href="en.html" hreflang="en" lang="en" data-lang="en" title="English version">EN</a>
+    <a href="https://github.com/hczr-dev/studytrack">GitHub</a>
     <a href="#telecharger">Télécharger</a>
   </nav>
 </header>
 
 <main>
   <section class="hero" data-cam="hero">
-    <h1>Tes cours EPFL, enfin au même endroit.</h1>
-    <p class="lede">Vidéos, séries, corrigés, horaire : StudyTrack va les chercher pour toi et te dit chaque jour ce qu'il reste à faire.</p>
+    <h1>Tout le contenu de tes cours enfin réuni.</h1>
+    <p class="lede">Séries, corrigés, MOOCs : StudyTrack va tout chercher pour toi.</p>
     <div class="get" data-get>
       <a class="plat" data-platform="iphone" href="https://testflight.apple.com/join/6kj3rHyM">
         <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6.5" y="2.5" width="11" height="19" rx="2.6"/><path d="M10.5 18.5h3"/></svg>
@@ -51,13 +76,13 @@
         <span><b>Windows</b><small>10 et 11</small></span>
       </a>
     </div>
-    <p class="fine">Gratuit et sans pub · made with ❤️ by hczr</p>
+    <p class="fine">Gratuit et sans pub · <a href="https://github.com/hczr-dev/studytrack">open source sur GitHub</a> · made with ❤️ by hczr</p>
   </section>
 
   <section class="bay" data-cam="today" id="aujourdhui">
     <div class="panel">
-      <h2>Chaque matin, ce qu'il reste à faire.</h2>
-      <p>Tes heures de la semaine, ton prochain cours et, matière par matière, ce qui t'attend ou a pris du retard.</p>
+      <h2>Ta page d'accueil</h2>
+      <p>Ton horaire et matière par matière, ce qui t'attend ou a pris du retard.</p>
     </div>
     <figure class="device iphone"><img src="shots/p-today.webp" alt="L'écran Aujourd'hui sur iPhone, avec des données d'exemple." width="860" height="1870" loading="lazy"></figure>
   </section>
@@ -65,7 +90,7 @@
   <section class="bay right" data-cam="import" id="semestre">
     <div class="panel">
       <h2>Ton semestre se range tout seul.</h2>
-      <p>Connecte ton compte EPFL une fois. Les vidéos, séries et corrigés de Moodle, Botafogo ou Ed arrivent ensuite dans la bonne semaine, avec ton horaire.</p>
+      <p>Connecte tes comptes, et les vidéos, séries et corrigés sont automatiquement importés depuis Moodle, Botafogo ou Ed.</p>
     </div>
     <figure class="device iphone"><img src="shots/p-courses.webp" alt="Tes cours sur iPhone, avec des données d'exemple." width="860" height="1870" loading="lazy"></figure>
   </section>
@@ -73,22 +98,22 @@
   <section class="bay wide" data-cam="etude" id="etude">
     <div class="panel">
       <h2>Un mode étude pour faire tes séries.</h2>
-      <p>L'exercice en plein écran avec un chrono, et un tuteur qui te donne des indices plutôt que la réponse, puis relit ta copie à la fin.</p>
+      <p>L'exercice en plein écran avec un chrono, un tuteur IA qui te donne des indices plutôt que la réponse et corrige ta copie.</p>
     </div>
     <figure class="device mac"><div class="bar" aria-hidden="true"><i></i><i></i><i></i></div><img src="shots/w-study.webp" alt="Le mode étude sur Mac : un exercice d'Analyse I et le bilan du tuteur, avec des données d'exemple." width="1800" height="1652" loading="lazy"></figure>
   </section>
 
   <section class="bay right wide" data-cam="hours" id="heures">
     <div class="panel">
-      <h2>Des heures qui veulent dire quelque chose.</h2>
-      <p>Tu choisis ce qui compte comme travail, et chaque semaine tu vois où tu en es par rapport à tes crédits.</p>
+      <h2>Un suivi de tes heures sur mesure.</h2>
+      <p>Tu sais chaque semaine combien tu as travaillé sur chaque exercice et chaque matière.</p>
     </div>
     <figure class="device win"><div class="bar" aria-hidden="true"><i></i><i></i><i></i></div><img src="shots/w-hours.webp" alt="Le bilan de la semaine sur Windows, avec des données d'exemple." width="1800" height="1125" loading="lazy"></figure>
   </section>
 
   <section class="bay" data-cam="groups" id="groupes">
     <div class="panel">
-      <h2>À plusieurs, chacun chez soi.</h2>
+      <h2>Travailler à plusieurs.</h2>
       <p>Crée un groupe avec tes amis : vous voyez qui travaille en ce moment et où chacun en est dans les séries.</p>
     </div>
     <figure class="device iphone"><img src="shots/p-groups.webp" alt="L'avancement d'un groupe dans les séries, avec des données d'exemple." width="860" height="1870" loading="lazy"></figure>
@@ -97,7 +122,7 @@
   <section class="bay right" data-cam="everywhere" id="partout">
     <div class="panel">
       <h2>Sur iPhone, Mac et Windows.</h2>
-      <p>Tes données te suivent d'un appareil à l'autre, chiffrées de bout en bout. Ni pub, ni traceur. <a href="privacy.html">Confidentialité</a></p>
+      <p>L'app synchronise tes données de manière sécurisée. Ni pub, ni traceur. <a href="privacy.html">Confidentialité</a></p>
     </div>
   </section>
 
@@ -110,26 +135,22 @@
         <h3>iPhone</h3>
         <p class="ver" id="ver-iphone">Bêta publique sur TestFlight</p>
         <a class="go" id="dl-iphone" href="https://testflight.apple.com/join/6kj3rHyM">Rejoindre la bêta</a>
-        <p class="how">Installe d'abord <a href="https://apps.apple.com/app/testflight/id899247664">TestFlight</a> depuis l'App Store, puis ouvre le lien de la bêta sur ton iPhone. Les mises à jour arrivent ensuite toutes seules.</p>
+        <p class="how">Installe d'abord <a href="https://apps.apple.com/app/testflight/id899247664">TestFlight</a> depuis l'App Store, puis ouvre le lien de la bêta sur ton iPhone.</p>
       </article>
       <article data-platform="mac">
         <h3>Mac</h3>
-        <p class="ver" id="ver-mac">macOS 14 ou plus récent</p>
-        <a class="go" id="dl-mac" href="https://github.com/hchzr/studytrack-site/releases/latest">Télécharger pour Mac</a>
-        <p class="how">Ouvre le fichier téléchargé et glisse StudyTrack dans Applications. L'app est vérifiée par Apple, elle s'ouvre sans avertissement et te prévient quand une nouvelle version sort.</p>
+        <p class="ver" id="ver-mac" data-known="Version {version} ({build}) · macOS 14 ou plus récent">macOS 14 ou plus récent</p>
+        <a class="go" id="dl-mac" href="https://github.com/hczr-dev/studytrack-site/releases/latest">Télécharger pour Mac</a>
+        <p class="how">Ouvre le fichier téléchargé et glisse StudyTrack dans Applications.</p>
       </article>
       <article data-platform="windows">
         <h3>Windows</h3>
-        <p class="ver" id="ver-win">Windows 10 et 11, 64 bits</p>
-        <a class="go" id="dl-win" href="https://github.com/hchzr/studytrack-site/releases/latest">Télécharger pour Windows</a>
-        <p class="how">Lance l'installeur. Si Windows affiche l'écran bleu SmartScreen, clique sur « Informations complémentaires », puis « Exécuter quand même ». Pour installer sur plusieurs machines, il existe aussi <a id="dl-msi" href="https://github.com/hchzr/studytrack-site/releases/latest">un installeur MSI</a>.</p>
+        <p class="ver" id="ver-win" data-known="Version {version} · Windows 10 et 11, 64 bits">Windows 10 et 11, 64 bits</p>
+        <a class="go" id="dl-win" href="https://github.com/hczr-dev/studytrack-site/releases/latest">Télécharger pour Windows</a>
+        <p class="how">Lance l'installeur. Si Windows affiche l'écran bleu SmartScreen, clique sur « Informations complémentaires », puis « Exécuter quand même ». Installeur MSI : <a id="dl-msi" href="https://github.com/hczr-dev/studytrack-site/releases/latest">télécharger</a>.</p>
       </article>
     </div>
-    <p class="help">Un souci ? Écris-nous depuis l'app (Réglages, puis « Signaler un problème ») ou à <a href="mailto:studytrack@hczr.ch">studytrack@hczr.ch</a>.</p>
-  </section>
-
-  <section class="english" lang="en">
-    <p><b>In English.</b> StudyTrack is a free app for EPFL students on iPhone, Mac and Windows. It gathers your courses from Moodle, Botafogo, Courseware, Ed and IS-Academia, sorts lectures, exercise sheets and deadlines week by week, and tells you each morning what's left to do. It also has a focused study mode with a tutor that gives hints rather than answers, honest study-hour tracking and study groups. Sync is end-to-end encrypted. <a href="privacy.html#en">Privacy policy</a></p>
+    <p class="help">Un souci ? Écris-nous depuis l'app (Réglages puis « Signaler un problème ») ou à <a href="mailto:studytrack@hczr.ch">studytrack@hczr.ch</a>.</p>
   </section>
 </main>
 
@@ -138,7 +159,8 @@
   <a href="mailto:studytrack@hczr.ch">studytrack@hczr.ch</a>
   <a href="privacy.html">Confidentialité</a>
   <a href="terms.html">Conditions</a>
-  <small class="credits">Images aériennes, bâtiments (swissBUILDINGS3D) et végétation 3D © swisstopo · Sentinel-2 cloudless 2020 par EOX IT Services (données Copernicus Sentinel modifiées), CC BY-NC-SA 4.0 · relief Terrain Tiles (Mapzen, AWS Open Data). Le Rolex Learning Center est une œuvre de SANAA ; la RTS (OFFICE Kersten Geers David Van Severen), absente des données, est reconstituée d'après les plans et coupes publiés par ses architectes, et les façades sont modélisées d'après des photos du campus.json">sources</a>, modules sous la même licence). Les captures de l'app utilisent des données d'exemple.</small>
+  <a href="https://github.com/hczr-dev/studytrack">Open source (GitHub)</a>
+  <small class="credits">Images aériennes, bâtiments (swissBUILDINGS3D) et végétation 3D © swisstopo · Sentinel-2 cloudless 2020 par EOX IT Services (données Copernicus Sentinel modifiées), CC BY-NC-SA 4.0 · relief Terrain Tiles (Mapzen, AWS Open Data). Le Rolex Learning Center est une œuvre de SANAA ; la RTS (OFFICE Kersten Geers David Van Severen), absente des données, est reconstituée d'après les plans et coupes publiés par ses architectes, et les façades sont modélisées d'après des photos du campus. Les captures de l'app utilisent des données d'exemple.</small>
 </footer>
 
 <script type="module" src="dist/slab.js"></script>

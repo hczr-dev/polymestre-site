@@ -15,3 +15,4 @@ exclude:
   - geo/mobile.py
   - build.sh
   - slab.js
+  - i18n

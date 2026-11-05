@@ -1,0 +1,169 @@
+<!doctype html>
+<!-- Page générée par i18n/build.py : modifie i18n/strings.toml ou i18n/index.html, pas ce fichier. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>StudyTrack — your EPFL courses, week by week</title>
+<meta name="description" content="StudyTrack gathers your EPFL courses (Moodle, Botafogo, Ed, IS-Academia) and tells you every morning what's left to do. Study mode, honest hours, groups. Free on iPhone, Mac and Windows.">
+<meta name="theme-color" content="#d9dad7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0f1114" media="(prefers-color-scheme: dark)">
+<meta property="og:title" content="StudyTrack">
+<meta property="og:description" content="Your EPFL courses in one place, and every morning what's left to do. iPhone, Mac and Windows.">
+<meta property="og:locale" content="en_GB">
+<meta property="og:image" content="https://studytrack.hczr.ch/shots/windows-today.webp">
+<link rel="alternate" hreflang="fr" href="https://studytrack.hczr.ch/">
+<link rel="alternate" hreflang="en" href="https://studytrack.hczr.ch/en.html">
+<link rel="alternate" hreflang="x-default" href="https://studytrack.hczr.ch/">
+<script>
+// La langue : un navigateur qui ne parle pas français arrive sur la version anglaise, sauf si la
+// personne a choisi le français avec le lien FR/EN ; ce choix est retenu dans ce navigateur.
+(function () {
+  try {
+    document.addEventListener("click", function (e) {
+      var a = e.target.closest && e.target.closest("a[data-lang]");
+      if (a) { try { localStorage.setItem("lang", a.dataset.lang); } catch (_) {} }
+    });
+    var saved = localStorage.getItem("lang"), langs = navigator.languages || [navigator.language || ""];
+    var english = saved ? saved === "en"
+      : !/bot|crawl|spider|slurp|preview/i.test(navigator.userAgent) && !langs.some(function (l) { return /^fr\b/i.test(l); });
+    if (document.documentElement.lang === "fr" && english) {
+      location.replace("en.html" + location.hash);
+    }
+  } catch (_) {}
+})();
+</script>
+<link rel="icon" href="icon.png">
+<link rel="apple-touch-icon" href="icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,300..800&display=swap">
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+<canvas id="slab" aria-hidden="true"></canvas>
+<div class="intro-card" aria-hidden="true" data-coords="46.43° N · 6.52° E|46.52° N · 6.57° E|46.5184° N · 6.5681° E" data-places="Lake Geneva|Ecublens|EPFL">
+  <span class="coords">46.43° N · 6.52° E</span>
+  <span class="place">Lake Geneva</span>
+</div>
+<button class="skip" type="button" data-skip-intro>Skip intro</button>
+<p class="geo-credit">Imagery © swisstopo · Sentinel-2 cloudless 2020, EOX · buildings © swisstopo</p>
+
+<header class="top">
+  <a class="mark" href="en.html"><img src="logo-120.png" alt="" width="30" height="30">StudyTrack</a>
+  <nav>
+    <a href="./" hreflang="fr" lang="fr" data-lang="fr" title="Version française">FR</a>
+    <a href="https://github.com/hczr-dev/studytrack">GitHub</a>
+    <a href="#telecharger">Download</a>
+  </nav>
+</header>
+
+<main>
+  <section class="hero" data-cam="hero">
+    <h1>All your course material, finally in one place.</h1>
+    <p class="lede">Exercise sheets, solutions, MOOCs: StudyTrack fetches it all for you.</p>
+    <div class="get" data-get>
+      <a class="plat" data-platform="iphone" href="https://testflight.apple.com/join/6kj3rHyM">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6.5" y="2.5" width="11" height="19" rx="2.6"/><path d="M10.5 18.5h3"/></svg>
+        <span><b>iPhone</b><small>TestFlight beta</small></span>
+      </a>
+      <a class="plat" data-platform="mac" href="#telecharger">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="11.5" rx="1.6"/><path d="M1.5 19.5h21"/></svg>
+        <span><b>Mac</b><small>macOS 14 or later</small></span>
+      </a>
+      <a class="plat" data-platform="windows" href="#telecharger">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 5.6 10.5 4.6v6.9h-7zM12.5 4.3l8-1.1v8.3h-8zM3.5 12.5h7v6.9l-7-1zM12.5 12.5h8v8.3l-8-1.1z"/></svg>
+        <span><b>Windows</b><small>10 and 11</small></span>
+      </a>
+    </div>
+    <p class="fine">Free and ad-free · <a href="https://github.com/hczr-dev/studytrack">open source on GitHub</a> · made with ❤️ by hczr</p>
+  </section>
+
+  <section class="bay" data-cam="today" id="aujourdhui">
+    <div class="panel">
+      <h2>Your home page</h2>
+      <p>Your timetable and, course by course, what's coming up or has fallen behind.</p>
+    </div>
+    <figure class="device iphone"><img src="shots/p-today.webp" alt="The Today screen on iPhone, with sample data." width="860" height="1870" loading="lazy"></figure>
+  </section>
+
+  <section class="bay right" data-cam="import" id="semestre">
+    <div class="panel">
+      <h2>Your semester sorts itself out.</h2>
+      <p>Connect your accounts, and videos, exercise sheets and solutions are imported automatically from Moodle, Botafogo or Ed.</p>
+    </div>
+    <figure class="device iphone"><img src="shots/p-courses.webp" alt="Your courses on iPhone, with sample data." width="860" height="1870" loading="lazy"></figure>
+  </section>
+
+  <section class="bay wide" data-cam="etude" id="etude">
+    <div class="panel">
+      <h2>A study mode for your exercise sheets.</h2>
+      <p>The exercise full screen with a timer, and an AI tutor that gives you hints rather than the answer and corrects your work.</p>
+    </div>
+    <figure class="device mac"><div class="bar" aria-hidden="true"><i></i><i></i><i></i></div><img src="shots/w-study.webp" alt="Study mode on Mac: an Analysis I exercise and the tutor's feedback, with sample data." width="1800" height="1652" loading="lazy"></figure>
+  </section>
+
+  <section class="bay right wide" data-cam="hours" id="heures">
+    <div class="panel">
+      <h2>Study hours, tracked your way.</h2>
+      <p>Every week you know how long you worked on each exercise and each course.</p>
+    </div>
+    <figure class="device win"><div class="bar" aria-hidden="true"><i></i><i></i><i></i></div><img src="shots/w-hours.webp" alt="The week's summary on Windows, with sample data." width="1800" height="1125" loading="lazy"></figure>
+  </section>
+
+  <section class="bay" data-cam="groups" id="groupes">
+    <div class="panel">
+      <h2>Study together.</h2>
+      <p>Create a group with your friends: you see who's working right now and how far each of you is in the exercise sheets.</p>
+    </div>
+    <figure class="device iphone"><img src="shots/p-groups.webp" alt="A group's progress through the exercise sheets, with sample data." width="860" height="1870" loading="lazy"></figure>
+  </section>
+
+  <section class="bay right" data-cam="everywhere" id="partout">
+    <div class="panel">
+      <h2>On iPhone, Mac and Windows.</h2>
+      <p>The app syncs your data securely. No ads, no trackers. <a href="privacy.html#en">Privacy</a></p>
+    </div>
+  </section>
+
+  <section class="plan" id="plan" data-cam="plan" aria-hidden="true"></section>
+
+  <section class="download" id="telecharger" data-covers-slab>
+    <h2>Download StudyTrack</h2>
+    <div class="columns">
+      <article data-platform="iphone">
+        <h3>iPhone</h3>
+        <p class="ver" id="ver-iphone">Public beta on TestFlight</p>
+        <a class="go" id="dl-iphone" href="https://testflight.apple.com/join/6kj3rHyM">Join the beta</a>
+        <p class="how">First install <a href="https://apps.apple.com/app/testflight/id899247664">TestFlight</a> from the App Store, then open the beta link on your iPhone.</p>
+      </article>
+      <article data-platform="mac">
+        <h3>Mac</h3>
+        <p class="ver" id="ver-mac" data-known="Version {version} ({build}) · macOS 14 or later">macOS 14 or later</p>
+        <a class="go" id="dl-mac" href="https://github.com/hczr-dev/studytrack-site/releases/latest">Download for Mac</a>
+        <p class="how">Open the downloaded file and drag StudyTrack into Applications.</p>
+      </article>
+      <article data-platform="windows">
+        <h3>Windows</h3>
+        <p class="ver" id="ver-win" data-known="Version {version} · Windows 10 and 11, 64-bit">Windows 10 and 11, 64-bit</p>
+        <a class="go" id="dl-win" href="https://github.com/hczr-dev/studytrack-site/releases/latest">Download for Windows</a>
+        <p class="how">Run the installer. If Windows shows the blue SmartScreen screen, click “More info”, then “Run anyway”. MSI installer: <a id="dl-msi" href="https://github.com/hczr-dev/studytrack-site/releases/latest">download</a>.</p>
+      </article>
+    </div>
+    <p class="help">Something wrong? Write to us from the app (Settings then “Report a problem”) or at <a href="mailto:studytrack@hczr.ch">studytrack@hczr.ch</a>.</p>
+  </section>
+</main>
+
+<footer class="foot">
+  <span>StudyTrack is not affiliated with EPFL.</span>
+  <a href="mailto:studytrack@hczr.ch">studytrack@hczr.ch</a>
+  <a href="privacy.html#en">Privacy</a>
+  <a href="terms.html#en">Terms</a>
+  <a href="https://github.com/hczr-dev/studytrack">Open source (GitHub)</a>
+  <small class="credits">Aerial imagery, buildings (swissBUILDINGS3D) and 3D vegetation © swisstopo · Sentinel-2 cloudless 2020 by EOX IT Services (contains modified Copernicus Sentinel data), CC BY-NC-SA 4.0 · elevation Terrain Tiles (Mapzen, AWS Open Data). The Rolex Learning Center is a work by SANAA; the RTS building (OFFICE Kersten Geers David Van Severen), missing from the data, is reconstructed from the plans and sections published by its architects, and the façades are modelled from photos of the campus. App screenshots use sample data.</small>
+</footer>
+
+<script type="module" src="dist/slab.js"></script>
+<script src="get.js" defer></script>
+</body>
+</html>

@@ -193,12 +193,6 @@ figure { margin: 0; }
 .how { margin: 20px 0 0; color: var(--ink-2); font-size: 15.5px; line-height: 1.6; max-width: 32em; }
 .help { margin: 40px 0 0; font-size: 14.5px; color: var(--ink-3); }
 
-.english {
-  position: relative; z-index: 2; background: var(--concrete);
-  padding: 0 var(--gutter) clamp(40px, 6vw, 72px);
-}
-.english p { margin: 0; max-width: 46em; font-size: 15px; color: var(--ink-3); border-top: 1px solid var(--rule); padding-top: 28px; }
-.english b { color: var(--ink-2); }
 
 .foot {
   z-index: 2; background: var(--concrete); border-top: 1px solid var(--rule);

@@ -1,0 +1,272 @@
+# Les textes du site, en français et en anglais côte à côte.
+#
+# Modifier un texte : change la ligne fr = ou en = ci-dessous, puis lance
+#     python3 i18n/build.py
+# qui régénère index.html (français) et en.html (anglais). Le script refuse de construire
+# s'il manque une traduction, et signale les textes qui ne servent plus.
+#
+# Chaque [section.nom] correspond à un {{section.nom}} dans i18n/index.html.
+# Les textes entre ''' ... ''' peuvent contenir du HTML (liens, guillemets) tel quel.
+# Une liste ["a", "b"] s'écrit a|b dans la page ; {{nom[0]}} en prend le premier élément.
+
+# ------------------------------------------------------------------------------------------
+# En-tête de la page, langue
+# ------------------------------------------------------------------------------------------
+
+[page.lang]
+fr = "fr"
+en = "en"
+
+[page.locale]
+fr = "fr_CH"
+en = "en_GB"
+
+# Le logo en haut à gauche ramène au début de la page dans la même langue.
+[page.home]
+fr = "./"
+en = "en.html"
+
+[page.title]
+fr = "StudyTrack — tes cours EPFL, semaine par semaine"
+en = "StudyTrack — your EPFL courses, week by week"
+
+[page.description]
+fr = "StudyTrack rassemble tes cours EPFL (Moodle, Botafogo, Ed, IS-Academia) et te dit chaque matin ce qu'il reste à faire. Mode étude, heures honnêtes, groupes. Gratuit sur iPhone, Mac et Windows."
+en = "StudyTrack gathers your EPFL courses (Moodle, Botafogo, Ed, IS-Academia) and tells you every morning what's left to do. Study mode, honest hours, groups. Free on iPhone, Mac and Windows."
+
+[page.og_description]
+fr = "Tes cours EPFL au même endroit, et chaque matin ce qu'il reste à faire. iPhone, Mac et Windows."
+en = "Your EPFL courses in one place, and every morning what's left to do. iPhone, Mac and Windows."
+
+# Le lien vers l'autre langue, en haut à droite.
+[switch.label]
+fr = "EN"
+en = "FR"
+
+[switch.title]
+fr = "English version"
+en = "Version française"
+
+[switch.lang]
+fr = "en"
+en = "fr"
+
+[switch.href]
+fr = "en.html"
+en = "./"
+
+# ------------------------------------------------------------------------------------------
+# Intro (le vol au-dessus du Léman)
+# ------------------------------------------------------------------------------------------
+
+# Une légende par étape du vol, dans l'ordre.
+[intro.coords]
+fr = ["46,43° N · 6,52° E", "46,52° N · 6,57° E", "46,5184° N · 6,5681° E"]
+en = ["46.43° N · 6.52° E", "46.52° N · 6.57° E", "46.5184° N · 6.5681° E"]
+
+[intro.places]
+fr = ["Lac Léman", "Ecublens", "EPFL"]
+en = ["Lake Geneva", "Ecublens", "EPFL"]
+
+[intro.skip]
+fr = "Passer l'intro"
+en = "Skip intro"
+
+[intro.credit]
+fr = "Images © swisstopo · Sentinel-2 cloudless 2020, EOX · bâtiments © swisstopo"
+en = "Imagery © swisstopo · Sentinel-2 cloudless 2020, EOX · buildings © swisstopo"
+
+[nav.download]
+fr = "Télécharger"
+en = "Download"
+
+# ------------------------------------------------------------------------------------------
+# Accueil
+# ------------------------------------------------------------------------------------------
+
+[hero.title]
+fr = "Tout le contenu de tes cours enfin réuni."
+en = "All your course material, finally in one place."
+
+[hero.lede]
+fr = "Séries, corrigés, MOOCs : StudyTrack va tout chercher pour toi."
+en = "Exercise sheets, solutions, MOOCs: StudyTrack fetches it all for you."
+
+[hero.iphone]
+fr = "Bêta TestFlight"
+en = "TestFlight beta"
+
+[hero.mac]
+fr = "macOS 14 ou plus"
+en = "macOS 14 or later"
+
+[hero.windows]
+fr = "10 et 11"
+en = "10 and 11"
+
+[hero.fine]
+fr = '''Gratuit et sans pub · <a href="https://github.com/hczr-dev/studytrack">open source sur GitHub</a> · made with ❤️ by hczr'''
+en = '''Free and ad-free · <a href="https://github.com/hczr-dev/studytrack">open source on GitHub</a> · made with ❤️ by hczr'''
+
+# ------------------------------------------------------------------------------------------
+# Sections
+# ------------------------------------------------------------------------------------------
+
+[today.title]
+fr = "Ta page d'accueil"
+en = "Your home page"
+
+[today.text]
+fr = "Ton horaire et matière par matière, ce qui t'attend ou a pris du retard."
+en = "Your timetable and, course by course, what's coming up or has fallen behind."
+
+[today.alt]
+fr = "L'écran Aujourd'hui sur iPhone, avec des données d'exemple."
+en = "The Today screen on iPhone, with sample data."
+
+[semester.title]
+fr = "Ton semestre se range tout seul."
+en = "Your semester sorts itself out."
+
+[semester.text]
+fr = "Connecte tes comptes, et les vidéos, séries et corrigés sont automatiquement importés depuis Moodle, Botafogo ou Ed."
+en = "Connect your accounts, and videos, exercise sheets and solutions are imported automatically from Moodle, Botafogo or Ed."
+
+[semester.alt]
+fr = "Tes cours sur iPhone, avec des données d'exemple."
+en = "Your courses on iPhone, with sample data."
+
+[study.title]
+fr = "Un mode étude pour faire tes séries."
+en = "A study mode for your exercise sheets."
+
+[study.text]
+fr = "L'exercice en plein écran avec un chrono, un tuteur IA qui te donne des indices plutôt que la réponse et corrige ta copie."
+en = "The exercise full screen with a timer, and an AI tutor that gives you hints rather than the answer and corrects your work."
+
+[study.alt]
+fr = "Le mode étude sur Mac : un exercice d'Analyse I et le bilan du tuteur, avec des données d'exemple."
+en = "Study mode on Mac: an Analysis I exercise and the tutor's feedback, with sample data."
+
+[hours.title]
+fr = "Un suivi de tes heures sur mesure."
+en = "Study hours, tracked your way."
+
+[hours.text]
+fr = "Tu sais chaque semaine combien tu as travaillé sur chaque exercice et chaque matière."
+en = "Every week you know how long you worked on each exercise and each course."
+
+[hours.alt]
+fr = "Le bilan de la semaine sur Windows, avec des données d'exemple."
+en = "The week's summary on Windows, with sample data."
+
+[groups.title]
+fr = "Travailler à plusieurs."
+en = "Study together."
+
+[groups.text]
+fr = "Crée un groupe avec tes amis : vous voyez qui travaille en ce moment et où chacun en est dans les séries."
+en = "Create a group with your friends: you see who's working right now and how far each of you is in the exercise sheets."
+
+[groups.alt]
+fr = "L'avancement d'un groupe dans les séries, avec des données d'exemple."
+en = "A group's progress through the exercise sheets, with sample data."
+
+[everywhere.title]
+fr = "Sur iPhone, Mac et Windows."
+en = "On iPhone, Mac and Windows."
+
+[everywhere.text]
+fr = '''L'app synchronise tes données de manière sécurisée. Ni pub, ni traceur. <a href="privacy.html">Confidentialité</a>'''
+en = '''The app syncs your data securely. No ads, no trackers. <a href="privacy.html#en">Privacy</a>'''
+
+# ------------------------------------------------------------------------------------------
+# Téléchargements
+# ------------------------------------------------------------------------------------------
+
+[download.title]
+fr = "Télécharger StudyTrack"
+en = "Download StudyTrack"
+
+[download.iphone_ver]
+fr = "Bêta publique sur TestFlight"
+en = "Public beta on TestFlight"
+
+[download.iphone_go]
+fr = "Rejoindre la bêta"
+en = "Join the beta"
+
+[download.iphone_how]
+fr = '''Installe d'abord <a href="https://apps.apple.com/app/testflight/id899247664">TestFlight</a> depuis l'App Store, puis ouvre le lien de la bêta sur ton iPhone.'''
+en = '''First install <a href="https://apps.apple.com/app/testflight/id899247664">TestFlight</a> from the App Store, then open the beta link on your iPhone.'''
+
+[download.mac_ver]
+fr = "macOS 14 ou plus récent"
+en = "macOS 14 or later"
+
+# Une fois la dernière version connue ; {version} et {build} sont remplis par get.js.
+[download.mac_ver_known]
+fr = "Version {version} ({build}) · macOS 14 ou plus récent"
+en = "Version {version} ({build}) · macOS 14 or later"
+
+[download.mac_go]
+fr = "Télécharger pour Mac"
+en = "Download for Mac"
+
+[download.mac_how]
+fr = "Ouvre le fichier téléchargé et glisse StudyTrack dans Applications."
+en = "Open the downloaded file and drag StudyTrack into Applications."
+
+[download.win_ver]
+fr = "Windows 10 et 11, 64 bits"
+en = "Windows 10 and 11, 64-bit"
+
+# {version} est rempli par get.js.
+[download.win_ver_known]
+fr = "Version {version} · Windows 10 et 11, 64 bits"
+en = "Version {version} · Windows 10 and 11, 64-bit"
+
+[download.win_go]
+fr = "Télécharger pour Windows"
+en = "Download for Windows"
+
+# Le lien id="dl-msi" reçoit le vrai fichier .msi par get.js : garde l'id.
+[download.win_how]
+fr = '''Lance l'installeur. Si Windows affiche l'écran bleu SmartScreen, clique sur « Informations complémentaires », puis « Exécuter quand même ». Installeur MSI : <a id="dl-msi" href="https://github.com/hczr-dev/studytrack-site/releases/latest">télécharger</a>.'''
+en = '''Run the installer. If Windows shows the blue SmartScreen screen, click “More info”, then “Run anyway”. MSI installer: <a id="dl-msi" href="https://github.com/hczr-dev/studytrack-site/releases/latest">download</a>.'''
+
+[download.help]
+fr = '''Un souci ? Écris-nous depuis l'app (Réglages puis « Signaler un problème ») ou à <a href="mailto:studytrack@hczr.ch">studytrack@hczr.ch</a>.'''
+en = '''Something wrong? Write to us from the app (Settings then “Report a problem”) or at <a href="mailto:studytrack@hczr.ch">studytrack@hczr.ch</a>.'''
+
+# ------------------------------------------------------------------------------------------
+# Pied de page
+# ------------------------------------------------------------------------------------------
+
+[footer.affiliation]
+fr = "StudyTrack n'est pas affilié à l'EPFL."
+en = "StudyTrack is not affiliated with EPFL."
+
+[footer.privacy]
+fr = "Confidentialité"
+en = "Privacy"
+
+[footer.privacy_href]
+fr = "privacy.html"
+en = "privacy.html#en"
+
+[footer.terms]
+fr = "Conditions"
+en = "Terms"
+
+[footer.terms_href]
+fr = "terms.html"
+en = "terms.html#en"
+
+[footer.source]
+fr = "Open source (GitHub)"
+en = "Open source (GitHub)"
+
+[footer.credits]
+fr = "Images aériennes, bâtiments (swissBUILDINGS3D) et végétation 3D © swisstopo · Sentinel-2 cloudless 2020 par EOX IT Services (données Copernicus Sentinel modifiées), CC BY-NC-SA 4.0 · relief Terrain Tiles (Mapzen, AWS Open Data). Le Rolex Learning Center est une œuvre de SANAA ; la RTS (OFFICE Kersten Geers David Van Severen), absente des données, est reconstituée d'après les plans et coupes publiés par ses architectes, et les façades sont modélisées d'après des photos du campus. Les captures de l'app utilisent des données d'exemple."
+en = "Aerial imagery, buildings (swissBUILDINGS3D) and 3D vegetation © swisstopo · Sentinel-2 cloudless 2020 by EOX IT Services (contains modified Copernicus Sentinel data), CC BY-NC-SA 4.0 · elevation Terrain Tiles (Mapzen, AWS Open Data). The Rolex Learning Center is a work by SANAA; the RTS building (OFFICE Kersten Geers David Van Severen), missing from the data, is reconstructed from the plans and sections published by its architects, and the façades are modelled from photos of the campus. App screenshots use sample data."

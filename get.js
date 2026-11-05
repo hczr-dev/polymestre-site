@@ -1,11 +1,18 @@
 // Les téléchargements : le bon bouton en avant selon l'appareil, et les vrais fichiers de la
 // dernière release (Mac et Windows dans la même), versions comprises.
 (function () {
-  var RELEASE_API = "https://api.github.com/repos/hchzr/studytrack-site/releases/latest";
+  var RELEASE_API = "https://api.github.com/repos/hczr-dev/studytrack-site/releases/latest";
 
   function set(id, prop, value) {
     var el = document.getElementById(id);
     if (el && value) { el[prop] = value; }
+  }
+
+  // « Version 2.1 (6) · … » : la phrase vient de la page (data-known, traduite dans i18n/strings.toml).
+  function version(id, values) {
+    var el = document.getElementById(id);
+    if (!el || !el.dataset.known) { return; }
+    el.textContent = el.dataset.known.replace(/\{(\w+)\}/g, function (all, k) { return values[k] != null ? values[k] : all; });
   }
 
   var ua = navigator.userAgent;
@@ -30,7 +37,7 @@
       if (!feed || !feed.url) { return; }
       set("dl-mac", "href", feed.url);
       direct("mac", feed.url);
-      set("ver-mac", "textContent", "Version " + feed.version + " (" + feed.build + ") · macOS 14 ou plus récent");
+      version("ver-mac", { version: feed.version, build: feed.build });
     })
     .catch(function () {});
 
@@ -47,7 +54,7 @@
         set("dl-win", "href", exe.browser_download_url);
         direct("windows", exe.browser_download_url);
         var m = exe.name.match(/_(\d+(?:\.\d+)+)_/);
-        if (m) { set("ver-win", "textContent", "Version " + m[1] + " · Windows 10 et 11, 64 bits"); }
+        if (m) { version("ver-win", { version: m[1] }); }
       }
       if (msi) { set("dl-msi", "href", msi.browser_download_url); }
     })

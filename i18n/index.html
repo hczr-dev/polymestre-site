@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="{{page.lang}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>{{page.title}}</title>
+<meta name="description" content="{{page.description}}">
+<meta name="theme-color" content="#d9dad7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0f1114" media="(prefers-color-scheme: dark)">
+<meta property="og:title" content="StudyTrack">
+<meta property="og:description" content="{{page.og_description}}">
+<meta property="og:locale" content="{{page.locale}}">
+<meta property="og:image" content="https://studytrack.hczr.ch/shots/windows-today.webp">
+<link rel="alternate" hreflang="fr" href="https://studytrack.hczr.ch/">
+<link rel="alternate" hreflang="en" href="https://studytrack.hczr.ch/en.html">
+<link rel="alternate" hreflang="x-default" href="https://studytrack.hczr.ch/">
+<script>
+// La langue : un navigateur qui ne parle pas français arrive sur la version anglaise, sauf si la
+// personne a choisi le français avec le lien FR/EN ; ce choix est retenu dans ce navigateur.
+(function () {
+  try {
+    document.addEventListener("click", function (e) {
+      var a = e.target.closest && e.target.closest("a[data-lang]");
+      if (a) { try { localStorage.setItem("lang", a.dataset.lang); } catch (_) {} }
+    });
+    var saved = localStorage.getItem("lang"), langs = navigator.languages || [navigator.language || ""];
+    var english = saved ? saved === "en"
+      : !/bot|crawl|spider|slurp|preview/i.test(navigator.userAgent) && !langs.some(function (l) { return /^fr\b/i.test(l); });
+    if (document.documentElement.lang === "fr" && english) {
+      location.replace("en.html" + location.hash);
+    }
+  } catch (_) {}
+})();
+</script>
+<link rel="icon" href="icon.png">
+<link rel="apple-touch-icon" href="icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,300..800&display=swap">
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+<canvas id="slab" aria-hidden="true"></canvas>
+<div class="intro-card" aria-hidden="true" data-coords="{{intro.coords}}" data-places="{{intro.places}}">
+  <span class="coords">{{intro.coords[0]}}</span>
+  <span class="place">{{intro.places[0]}}</span>
+</div>
+<button class="skip" type="button" data-skip-intro>{{intro.skip}}</button>
+<p class="geo-credit">{{intro.credit}}</p>
+
+<header class="top">
+  <a class="mark" href="{{page.home}}"><img src="logo-120.png" alt="" width="30" height="30">StudyTrack</a>
+  <nav>
+    <a href="{{switch.href}}" hreflang="{{switch.lang}}" lang="{{switch.lang}}" data-lang="{{switch.lang}}" title="{{switch.title}}">{{switch.label}}</a>
+    <a href="https://github.com/hczr-dev/studytrack">GitHub</a>
+    <a href="#telecharger">{{nav.download}}</a>
+  </nav>
+</header>
+
+<main>
+  <section class="hero" data-cam="hero">
+    <h1>{{hero.title}}</h1>
+    <p class="lede">{{hero.lede}}</p>
+    <div class="get" data-get>
+      <a class="plat" data-platform="iphone" href="https://testflight.apple.com/join/6kj3rHyM">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6.5" y="2.5" width="11" height="19" rx="2.6"/><path d="M10.5 18.5h3"/></svg>
+        <span><b>iPhone</b><small>{{hero.iphone}}</small></span>
+      </a>
+      <a class="plat" data-platform="mac" href="#telecharger">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="11.5" rx="1.6"/><path d="M1.5 19.5h21"/></svg>
+        <span><b>Mac</b><small>{{hero.mac}}</small></span>
+      </a>
+      <a class="plat" data-platform="windows" href="#telecharger">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 5.6 10.5 4.6v6.9h-7zM12.5 4.3l8-1.1v8.3h-8zM3.5 12.5h7v6.9l-7-1zM12.5 12.5h8v8.3l-8-1.1z"/></svg>
+        <span><b>Windows</b><small>{{hero.windows}}</small></span>
+      </a>
+    </div>
+    <p class="fine">{{hero.fine}}</p>
+  </section>
+
+  <section class="bay" data-cam="today" id="aujourdhui">
+    <div class="panel">
+      <h2>{{today.title}}</h2>
+      <p>{{today.text}}</p>
+    </div>
+    <figure class="device iphone"><img src="shots/p-today.webp" alt="{{today.alt}}" width="860" height="1870" loading="lazy"></figure>
+  </section>
+
+  <section class="bay right" data-cam="import" id="semestre">
+    <div class="panel">
+      <h2>{{semester.title}}</h2>
+      <p>{{semester.text}}</p>
+    </div>
+    <figure class="device iphone"><img src="shots/p-courses.webp" alt="{{semester.alt}}" width="860" height="1870" loading="lazy"></figure>
+  </section>
+
+  <section class="bay wide" data-cam="etude" id="etude">
+    <div class="panel">
+      <h2>{{study.title}}</h2>
+      <p>{{study.text}}</p>
+    </div>
+    <figure class="device mac"><div class="bar" aria-hidden="true"><i></i><i></i><i></i></div><img src="shots/w-study.webp" alt="{{study.alt}}" width="1800" height="1652" loading="lazy"></figure>
+  </section>
+
+  <section class="bay right wide" data-cam="hours" id="heures">
+    <div class="panel">
+      <h2>{{hours.title}}</h2>
+      <p>{{hours.text}}</p>
+    </div>
+    <figure class="device win"><div class="bar" aria-hidden="true"><i></i><i></i><i></i></div><img src="shots/w-hours.webp" alt="{{hours.alt}}" width="1800" height="1125" loading="lazy"></figure>
+  </section>
+
+  <section class="bay" data-cam="groups" id="groupes">
+    <div class="panel">
+      <h2>{{groups.title}}</h2>
+      <p>{{groups.text}}</p>
+    </div>
+    <figure class="device iphone"><img src="shots/p-groups.webp" alt="{{groups.alt}}" width="860" height="1870" loading="lazy"></figure>
+  </section>
+
+  <section class="bay right" data-cam="everywhere" id="partout">
+    <div class="panel">
+      <h2>{{everywhere.title}}</h2>
+      <p>{{everywhere.text}}</p>
+    </div>
+  </section>
+
+  <section class="plan" id="plan" data-cam="plan" aria-hidden="true"></section>
+
+  <section class="download" id="telecharger" data-covers-slab>
+    <h2>{{download.title}}</h2>
+    <div class="columns">
+      <article data-platform="iphone">
+        <h3>iPhone</h3>
+        <p class="ver" id="ver-iphone">{{download.iphone_ver}}</p>
+        <a class="go" id="dl-iphone" href="https://testflight.apple.com/join/6kj3rHyM">{{download.iphone_go}}</a>
+        <p class="how">{{download.iphone_how}}</p>
+      </article>
+      <article data-platform="mac">
+        <h3>Mac</h3>
+        <p class="ver" id="ver-mac" data-known="{{download.mac_ver_known}}">{{download.mac_ver}}</p>
+        <a class="go" id="dl-mac" href="https://github.com/hczr-dev/studytrack-site/releases/latest">{{download.mac_go}}</a>
+        <p class="how">{{download.mac_how}}</p>
+      </article>
+      <article data-platform="windows">
+        <h3>Windows</h3>
+        <p class="ver" id="ver-win" data-known="{{download.win_ver_known}}">{{download.win_ver}}</p>
+        <a class="go" id="dl-win" href="https://github.com/hczr-dev/studytrack-site/releases/latest">{{download.win_go}}</a>
+        <p class="how">{{download.win_how}}</p>
+      </article>
+    </div>
+    <p class="help">{{download.help}}</p>
+  </section>
+</main>
+
+<footer class="foot">
+  <span>{{footer.affiliation}}</span>
+  <a href="mailto:studytrack@hczr.ch">studytrack@hczr.ch</a>
+  <a href="{{footer.privacy_href}}">{{footer.privacy}}</a>
+  <a href="{{footer.terms_href}}">{{footer.terms}}</a>
+  <a href="https://github.com/hczr-dev/studytrack">{{footer.source}}</a>
+  <small class="credits">{{footer.credits}}</small>
+</footer>
+
+<script type="module" src="dist/slab.js"></script>
+<script src="get.js" defer></script>
+</body>
+</html>

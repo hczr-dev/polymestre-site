@@ -886,7 +886,6 @@ function mullion() { const m = new Module(true); m.box(-0.035, 0, 0, 0.035, 1, 0
 // du premier étage, deux escaliers en U à paliers arrondis descendent à la cour pavée. Tracé d'après
 // OpenStreetMap, hauteurs d'après le maillage, dessin d'après les photos.
 const AGORA_GROUND = 0.6;
-let signMat = null;
 const lampMat = new THREE.MeshStandardMaterial({ color: "#2a2620", emissive: "#ffd7a3", emissiveIntensity: 0, side: THREE.DoubleSide });
 function crossing() {
   const m = new Module(), S = 1 / M;                   // m.box travaille en mètres
@@ -1470,30 +1469,6 @@ function artlab() {
   return g;
 }
 const artWoodMat = new THREE.MeshStandardMaterial({ color: "#d4a463", roughness: 0.6, emissive: "#ffb85c", emissiveIntensity: 0, side: THREE.DoubleSide });
-// L'enseigne de la tour RTS, sur l'angle de sa plus haute boîte.
-function rtsSign() {
-  const paint = document.createElement("canvas"); paint.width = 512; paint.height = 192;
-  const b = paint.getContext("2d");
-  b.fillStyle = "#c8102e"; b.fillRect(0, 0, 512, 192);
-  b.fillStyle = "#fff"; b.textAlign = "center"; b.textBaseline = "middle";
-  b.font = "700 58px Archivo, Helvetica, Arial, sans-serif"; b.fillText("SRG SSR", 165, 98);
-  b.fillStyle = "#fff"; b.fillRect(326, 0, 8, 192);
-  b.font = "800 92px Archivo, Helvetica, Arial, sans-serif"; b.fillText("RTS", 424, 100);
-  const tex = new THREE.CanvasTexture(paint);
-  tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
-  tex.wrapS = THREE.RepeatWrapping; tex.repeat.x = -1;  // le campus est retourné : l'enseigne se relit
-  const mat = new THREE.MeshStandardMaterial({ map: tex, emissive: "#ffffff", emissiveMap: tex, emissiveIntensity: 0, roughness: 0.5, side: THREE.DoubleSide });
-  signMat = mat;
-  const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.15, 0.43), mat);
-  const nx = 0.4, nz = 0.92;
-  sign.position.set(30.6 + nx * 0.03, 5.86, -3.4 + nz * 0.03);   // sur l'angle, comme sur les photos
-  sign.rotation.y = Math.atan2(nx, nz);
-  const back = new THREE.Mesh(sign.geometry, new THREE.MeshStandardMaterial({ color: "#c8102e", roughness: 0.5, side: THREE.DoubleSide }));
-  back.position.z = -0.012;                            // de dos : du rouge, pas un texte à l'envers
-  sign.add(back);
-  return sign;
-}
-
 // La matière, sans image.
 const facadeMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.62, metalness: 0.12 });
 facadeMat.onBeforeCompile = (shader) => {
@@ -1858,7 +1833,7 @@ const facadesReady = groundGate.then(() => Promise.all([loadBin(`${SET}walls.bin
   const rolexFloor = new THREE.Mesh(floorGeo, new THREE.MeshStandardMaterial({ color: "#7d7a72", roughness: 0.9, side: THREE.DoubleSide }));
   rolexFloor.castShadow = rolexFloor.receiveShadow = true;
   rolexParts.add(rolexSkin, rolexGlass, rolexFloor);
-  facadeGroup.add(crossing(), agora(), artlab(), medCanopy(), rtsSign(), rtsRing(), odyssea(), swissTech(), polydome(), bcRoof());
+  facadeGroup.add(crossing(), agora(), artlab(), medCanopy(), rtsRing(), odyssea(), swissTech(), polydome(), bcRoof());
   const tint = new THREE.Color();
   let triangles = 0;
   for (const [key, { kit, matrices, colors }] of lists) {
@@ -1882,7 +1857,6 @@ const facadesReady = groundGate.then(() => Promise.all([loadBin(`${SET}walls.bin
     add(kit.glass, kit === kits.rts || kit === kits.slab ? rtsGlassMat : kit === kits.wood ? artGlassMat : kit === kits.medc ? medGlassMat : kit.lit ? qnGlassMat : glassMat, false);
   }
   facadeGroup.visible = true;
-  signMat.emissiveIntensity = night.value;
   await warm(facadeGroup);
   await warm(rolexParts);
   facadeGroup.visible = campus.scale.y >= 0.999;
@@ -2082,7 +2056,6 @@ function applyTheme() {
   rtsUnderMat.emissiveIntensity = dark ? 0.32 : 0;
   rtsGroundMat.emissiveIntensity = dark ? 0.12 : 0;
   rtsShedGlassMat.emissiveIntensity = dark ? 0.14 : 0;
-  if (signMat) signMat.emissiveIntensity = dark ? 1 : 0;
   shadowsDirty();
 }
 
@@ -2217,6 +2190,9 @@ for (const type of ["wheel", "touchstart", "keydown"]) addEventListener(type, sk
 document.querySelector("[data-skip-intro]")?.addEventListener("click", skipIntro);
 const card = document.querySelector(".intro-card");
 const cardCoords = card?.querySelector(".coords"), cardPlace = card?.querySelector(".place");
+// Les légendes viennent de la page, traduites avec le reste du site (i18n/strings.toml) : a|b|c.
+card?.dataset.coords?.split("|").forEach((t, i) => { if (INTRO.beats[i]) INTRO.beats[i].coords = t; });
+card?.dataset.places?.split("|").forEach((t, i) => { if (INTRO.beats[i]) INTRO.beats[i].place = t; });
 
 function introFrame(dt) {
   intro.t = Math.min(1, intro.t + (dt * intro.speed) / INTRO.duration);
