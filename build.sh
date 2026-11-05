@@ -1,6 +1,6 @@
 #!/bin/sh
-# Assemble slab.js et ses dépendances en un seul paquet servi par le site (et une part à la demande).
-# Usage : NODE_PATH=<node_modules avec three, postprocessing, n8ao> ./build.sh
+# Assemble slab.js et ses dépendances en un seul paquet servi par le site .
+# Usage : NODE_PATH=<node_modules avec three> ./build.sh
 set -e
 esbuild="$NODE_PATH/.bin/esbuild"
 "$esbuild" slab.js --bundle --format=esm --splitting --minify --target=safari15 --outdir=dist --chunk-names=[name]-[hash]

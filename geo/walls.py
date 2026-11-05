@@ -69,6 +69,7 @@ for a_, off, (u0, u1, lo, hi) in out:
     if p == q: continue                                         # une cloison, pas une façade
     if p: nx, nz = -nx, -nz
     s = style(mx - nx * 0.5, mz - nz * 0.5)
+    if s == 0 and -40.5 < mx < -24.5 and 72 < mz < 101: s = 16          # Quartier Nord : ses propres modules
     x0, z0 = np.cos(a_ * np.radians(2)) * off + tx * u0, np.sin(a_ * np.radians(2)) * off + tz * u0
     x1, z1 = np.cos(a_ * np.radians(2)) * off + tx * u1, np.sin(a_ * np.radians(2)) * off + tz * u1
     rows.append((x0, z0, x1, z1, lo, hi, nx, nz, s, lo - terrain(mx, mz)))

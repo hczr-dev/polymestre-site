@@ -218,6 +218,9 @@ figure { margin: 0; }
   .hero { padding-top: 96px; justify-content: flex-end; padding-bottom: 40px; color: #fff; }
   .hero::before { content: ""; position: absolute; inset: 30% 0 0; z-index: -1; background: linear-gradient(180deg, transparent, rgba(9, 11, 15, 0.72) 34%, rgba(9, 11, 15, 0.84)); }
   .hero .lede, .hero .fine { color: rgba(255, 255, 255, 0.88); }
+  /* Entre deux sections, l'écran entier au campus : on voit la caméra voler, sans rien devant. */
+  .bay, .bay.right, .bay.wide, .bay.right.wide { padding-top: 76svh; padding-bottom: 10svh; }
+  .bay::before, .bay.right::before { background: linear-gradient(180deg, transparent 60svh, rgba(9, 11, 15, 0.66) 74svh, rgba(9, 11, 15, 0.66) calc(100% - 6svh), transparent); }
   .get { flex-direction: column; }
   .plat { width: 100%; }
 }
@@ -265,8 +268,9 @@ figure { margin: 0; }
 .intro:not(.intro-done) .intro-card.show { opacity: 1; transform: none; }
 
 
-/* Tant que le décor charge, le ciel seul (le canevas apparaît avec l'intro). */
+/* Tant que le décor charge, le ciel et déjà le lieu (le canevas apparaît avec l'intro). */
 .intro-wait #slab { opacity: 0; }
+.intro.intro-wait .intro-card { opacity: 1; transform: none; }
 
 @media (max-width: 560px) {
     }

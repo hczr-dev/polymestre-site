@@ -3,8 +3,8 @@
 // ses patios, les arbres de la végétation 3D de swisstopo. À l'ouverture, la caméra descend du
 // ciel jusqu'au bâtiment et en fait le tour ; ensuite le défilement la promène.
 //
-// Sobriété : on ne dessine que quand quelque chose bouge ; pendant un mouvement l'image est
-// calculée en définition réduite, puis une image nette à l'arrêt. Les ombres sont figées
+// Sobriété : on ne dessine que quand quelque chose bouge ; une machine qui ne suit pas passe en
+// définition réduite pendant les mouvements. Les ombres sont figées
 // (le soleil ne bouge pas), recalculées seulement quand le bâtiment change.
 import * as THREE from "three";
 import { Sky } from "three/addons/objects/Sky.js";
@@ -23,19 +23,23 @@ const darkQuery = matchMedia("(prefers-color-scheme: dark)");
 
 let renderer;
 try {
-  renderer = new THREE.WebGLRenderer({ canvas, antialias: small || devicePixelRatio < 1.5, alpha: false, powerPreference: "high-performance" });
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, powerPreference: "high-performance" });
 } catch {
   root.classList.add("no-webgl", "intro-done");
   throw new Error("WebGL indisponible");
 }
 const DPR_HI = Math.min(devicePixelRatio, small ? 1.5 : 2);
-// Le canevas garde une taille fixe : le réallouer à chaque arrêt coûte plus que dessiner. En mouvement,
-// la scène passe par une image plus petite, agrandie à l'écran (voir fast) ; l'iPhone reste net.
+// Le canevas garde une taille fixe : le réallouer à chaque arrêt coûte plus que dessiner. Mouvement et
+// arrêt sont le même rendu, sans saut entre les deux ; seule une machine trop lente passe, en
+// mouvement, par une image plus petite agrandie à l'écran (voir fast).
 let dprNow = DPR_HI;
 let dprFast = Math.min(devicePixelRatio, small ? 1 : 1.35);
+// Le téléphone part léger ; s'il tient le rythme pendant le vol, l'image passe en plus fine à l'arrêt.
+const DPR_TOP = Math.min(devicePixelRatio, 2.25);
+let canRise = small && DPR_TOP > DPR_HI, fineFrames = 0;
 renderer.setPixelRatio(dprNow);
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = small ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
+renderer.shadowMap.type = THREE.PCFShadowMap;            // le filtre doux coûtait sur chaque pixel de façade
 renderer.shadowMap.autoUpdate = false;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -104,6 +108,21 @@ const SUN = { el: 31, az: 222 };
 // Le terrain : trois couches cuites (geo/), du Léman entier au campus
 // ==========================================================================================
 // La photo du campus à 0,2 m par pixel (geo/campus-photo), posée sur le sol quand elle arrive.
+// L'occlusion ambiante, cuite une fois pour toutes (geo/ao.py) et fixée au monde : la même sous toutes
+// les caméras, sans passe à l'écran. Rouge : lumière reçue ; vert : hauteur du sol.
+const aoMap = { value: new THREE.DataTexture(new Uint8Array([255, 128, 0, 255]), 1, 1) };
+aoMap.value.needsUpdate = true;
+const AO_GLSL = `
+  uniform sampler2D uAo;
+  float gAo = 1.0;
+  float aoAt(vec2 xz, float y) {
+    vec2 u = xz / 220.0 + 0.5;
+    vec4 t = texture2D(uAo, u);
+    float a = mix(t.r, 1.0, smoothstep(0.0, 3.0, y - (t.g * 10.0 - 4.0)));
+    return mix(1.0, pow(a, 1.35), step(max(abs(u.x - 0.5), abs(u.y - 0.5)), 0.495));
+  }`;
+const hazeTone = { value: new THREE.Color("#a8bac3") };
+const AO_APPLY = "outgoingLight = (outgoingLight - totalEmissiveRadiance) * gAo + totalEmissiveRadiance;\n#include <opaque_fragment>";
 const hiPhoto = { value: null }, hiBox = { value: new THREE.Vector4(0, 0, 1, 1) }, hasHi = { value: 0 };
 function terrainMaterial(tex, opts) {
   const m = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.95, metalness: 0, transparent: opts.fade > 0 });
@@ -118,6 +137,9 @@ function terrainMaterial(tex, opts) {
     shader.uniforms.uLake = { value: opts.lakeMask ?? null };
     shader.uniforms.uHasLake = { value: opts.lakeMask ? 1 : 0 };
     shader.uniforms.uLakeY = { value: LAKE + 0.05 };
+    shader.uniforms.uNight = night;
+    shader.uniforms.uAo = aoMap;
+    shader.uniforms.uHaze = hazeTone;
     shader.vertexShader = shader.vertexShader
       .replace("#include <common>", "#include <common>\nvarying vec3 vWorld;\nvarying vec2 vUvT;")
       .replace("#include <begin_vertex>", "#include <begin_vertex>\nvWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;\nvUvT = uv;");
@@ -126,6 +148,12 @@ function terrainMaterial(tex, opts) {
       .replace("#include <clipping_planes_fragment>", `#include <clipping_planes_fragment>
         if (uHole.z > 0.0 && abs(vWorld.x - uHole.x) < uHole.z && abs(vWorld.z - uHole.y) < uHole.w) discard;`)
       .replace("#include <map_fragment>", `#include <map_fragment>
+        // Vu de près du sol, le lointain : une photo aplatie, étirée en rayures par l'angle rasant. Comme
+        // dans la vraie vue, elle s'adoucit puis se fond dans l'air. Pas depuis le ciel, où elle est nette.
+        float gLow = 1.0 - smoothstep(70.0, 420.0, cameraPosition.y);
+        float gFar = length(vViewPosition);
+        gMist = gLow * 0.9 * (1.0 - exp(-pow(gFar / 1150.0, 1.35)));
+        diffuseColor.rgb = mix(diffuseColor.rgb, texture2D(map, vMapUv, 6.0).rgb, gLow * smoothstep(170.0, 620.0, gFar));
         if (uHasHi > 0.5) {
           vec2 hu = (vec2(vWorld.x, -vWorld.z) - uHiBox.xy) / (uHiBox.zw - uHiBox.xy);
           float he = min(min(hu.x, 1.0 - hu.x), min(hu.y, 1.0 - hu.y));
@@ -137,11 +165,22 @@ function terrainMaterial(tex, opts) {
         float ripple = sin(vWorld.x * 0.011 + vWorld.z * 0.004) * sin(vWorld.z * 0.013 - vWorld.x * 0.003);
         diffuseColor.rgb = mix(diffuseColor.rgb, uWater * (1.0 + 0.05 * ripple), wet);
         gWet = wet;
+        // La nuit, vu de haut : les villes s'allument. Le bâti, gris et clair sur l'image, sous la
+        // limite des neiges ; une lueur continue, tirée de l'image, donc rien qui scintille.
+        vec3 raw = texture2D(map, vMapUv).rgb;
+        float spread = max(raw.r, max(raw.g, raw.b)) - min(raw.r, min(raw.g, raw.b));
+        gCity = smoothstep(0.09, 0.24, dot(raw, vec3(0.3, 0.59, 0.11))) * (1.0 - smoothstep(0.04, 0.11, spread)) * (1.0 - wet) * (1.0 - smoothstep(22.0, 50.0, vWorld.y));
+        gHigh = smoothstep(180.0, 1100.0, cameraPosition.y);
+        gAo = aoAt(vec2(vWorld.x, -vWorld.z), -100.0);
         if (uFade > 0.0) {
           float edge = min(min(vUvT.x, 1.0 - vUvT.x), min(vUvT.y, 1.0 - vUvT.y));
           diffuseColor.a *= smoothstep(0.0, uFade, edge);
         }`)
-      .replace("#include <roughnessmap_fragment>", "#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, 0.62, gWet);");
+      .replace("#include <common>", `#include <common>\nuniform float uNight;\nuniform vec3 uHaze;\nfloat gCity = 0.0, gHigh = 0.0, gMist = 0.0;${AO_GLSL}`)
+      .replace("#include <opaque_fragment>", `outgoingLight = mix(outgoingLight, uHaze, gMist);\n${AO_APPLY}`)
+      .replace("#include <roughnessmap_fragment>", "#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, 0.62, gWet);")
+      .replace("#include <emissivemap_fragment>", `#include <emissivemap_fragment>
+        totalEmissiveRadiance += (vec3(1.0, 0.62, 0.3) * gCity * 0.8 + diffuseColor.rgb * 0.3 * (1.0 - gWet)) * gHigh * uNight;`);
   };
   return m;
 }
@@ -192,6 +231,12 @@ function loadTex(url) {
     }, undefined, reject);
   });
 }
+loadTex("geo/ao.webp").then((t) => {
+  t.colorSpace = THREE.NoColorSpace;
+  t.needsUpdate = true;
+  aoMap.value = t;
+  stale = true; sharpDone = false; wake();
+}).catch(() => {});
 const loadBin = (url, Type) => fetch(url).then((r) => { if (!r.ok) throw new Error(url); return r.arrayBuffer(); }).then((b) => new Type(b));
 
 const water = { value: new THREE.Color("#4f6f84") };
@@ -224,12 +269,22 @@ const night = { value: 0 };
 const nearPhoto = { value: null }, nearBox = { value: new THREE.Vector4(0, 0, 1, 0) };
 const wallTone = { value: new THREE.Color("#e7e3da") };
 const roofTone = { value: new THREE.Color("#c4bcb6") };
-const campusMat = new THREE.MeshStandardMaterial({ color: "#ffffff", roughness: 0.85, side: THREE.DoubleSide });
+// Les vitres 3D sont à quelques centimètres devant ce maillage : à distance, la profondeur ne les
+// départage plus et elles clignotent en mouvement. Le maillage passe donc juste derrière.
+const campusMat = new THREE.MeshStandardMaterial({ color: "#ffffff", roughness: 0.85, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 4 });
 campusMat.onBeforeCompile = (shader) => {
-  Object.assign(shader.uniforms, { uStyles: styleMap, uNight: night, uNear: nearPhoto, uNearBox: nearBox, uHi: hiPhoto, uHiBox: hiBox, uHasHi: hasHi, uWall: wallTone, uRoof: roofTone });
+  Object.assign(shader.uniforms, { uAo: aoMap, uStyles: styleMap, uNight: night, uNear: nearPhoto, uNearBox: nearBox, uHi: hiPhoto, uHiBox: hiBox, uHasHi: hasHi, uWall: wallTone, uRoof: roofTone });
   shader.vertexShader = shader.vertexShader
     .replace("#include <common>", "#include <common>\nvarying vec3 vLocal;\nvarying vec3 vUp;\nvarying vec2 vSpan;")
-    .replace("#include <begin_vertex>", "#include <begin_vertex>\nvLocal = position;\nvUp = normal;\nvSpan = uv;");
+    .replace("#include <begin_vertex>", "#include <begin_vertex>\nvLocal = position;\nvUp = normal;\nvSpan = uv;")
+    // Les murs du maillage ne sont pas parfaitement plans : par endroits ils passaient devant les façades
+    // 3D et se disputaient la profondeur. Rien ne bouge à l'écran, mais pour la profondeur ils sont
+    // 70 cm plus loin : la façade gagne toujours.
+    .replace("#include <project_vertex>", `#include <project_vertex>
+      if (abs(normal.y) < 0.3) {
+        vec4 behind = projectionMatrix * vec4(mvPosition.xyz * (1.0 + 0.12 / length(mvPosition.xyz)), 1.0);
+        gl_Position.z = behind.z / behind.w * gl_Position.w;
+      }`);
   shader.fragmentShader = shader.fragmentShader
     .replace("#include <common>", `#include <common>
       varying vec3 vLocal;
@@ -240,6 +295,7 @@ campusMat.onBeforeCompile = (shader) => {
       uniform vec4 uNearBox, uHiBox;
       uniform vec3 uWall, uRoof;
       float gGlass = 0.0, gGloss = 0.0, gLit = 0.0;
+      ${AO_GLSL}
       vec3 gTilt = vec3(0.0);
       float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
       ${small ? "float noise(vec2 p) { return 0.5; }" : `float noise(vec2 p) {
@@ -293,8 +349,8 @@ campusMat.onBeforeCompile = (shader) => {
         } else if (st == 7.0) {      // SwissTech : mur-rideau bleu
           skin = vec3(0.03, 0.04, 0.05); fh = 0.7; cw = 0.25; rowA = 0.02; rowB = 0.98; fill = 0.97; blinds = 0.0; cover = 0.9; weather = 0.0;
           pane0 = vec3(0.03, 0.09, 0.17); pane1 = vec3(0.09, 0.2, 0.32);
-        } else if (st == 8.0) {      // BC : métal sombre, hauts vitrages
-          skin = vec3(0.03, 0.032, 0.036); fh = 0.62; cw = 0.2; rowA = 0.08; rowB = 0.92; fill = 0.72; blinds = 0.0; cover = 0.45; weather = 0.1;
+        } else if (st == 8.0) {      // BC : enduit gris clair, fenêtres hautes et étroites
+          skin = vec3(0.6, 0.61, 0.6) * dim; fh = 0.62; cw = 0.2; rowA = 0.08; rowB = 0.92; fill = 0.72; blinds = 0.0; cover = 0.45; weather = 0.1;
         } else if (st == 9.0) {      // RTS : boîtes minérales taupe, très grandes baies
           skin = vec3(0.82, 0.81, 0.78) * dim; fh = 0.62; cw = 1.0; rowA = 0.27; rowB = 0.76; fill = 0.7; blinds = 0.0; cover = 0.26; weather = 0.1;
         } else if (st == 10.0) {     // RTS : la dalle suspendue, vitrée, traversée de poutres Warren
@@ -351,23 +407,72 @@ campusMat.onBeforeCompile = (shader) => {
         gGlass = win * detail;
         gGloss = win * (1.0 - blind) * detail * 0.85;
         gTilt = (vec3(r1, r2, r3) - 0.5) * 0.09 * gGloss;
-        gLit = win * step(0.72, r2) * (0.4 + 0.8 * r3) * uNight;
+        gLit = mix(0.22 * cover, win * step(0.72, r2) * (0.4 + 0.8 * r3), detail) * uNight;
         if (st == 10.0 && above > 1.0) { wall = vec3(0.14, 0.2, 0.24) * dim; gGlass = 1.0; gGloss = 0.8; gTilt = vec3(0.0); gLit = 0.0; }
         // Sur les photos, la RTS est un chantier : ses toits sont dessinés. Le dessous de la dalle est en bois.
         if (st == 9.0) top = vec3(0.72, 0.71, 0.69) * dim;
+        // ArtLab : le long toit d'ardoise, sa sous-face de bois.
+        if (st == 11.0) {
+          top = vec3(0.075, 0.08, 0.09) * (0.88 + 0.24 * step(0.5, fract(vLocal.z / 0.11)));
+          if (up.y * (gl_FrontFacing ? 1.0 : -1.0) < -0.2) top = vec3(0.6, 0.42, 0.22) * dim;
+        }
         if (st == 10.0) {
           top = vec3(0.78, 0.77, 0.74) * dim;
           if (above < 0.05) top = vec3(0.42, 0.25, 0.12) * dim * (0.9 + 0.2 * noise(vLocal.xz * vec2(14.0, 1.2)));
         }
         top = mix(top, vec3(dot(top, vec3(0.333))), 0.12);
       }
+      if (st == 10.0 || st == 9.0) gLit = 0.0;           // ses vraies fenêtres sont en 3D, avec leurs lumières
+      if ((st == 10.0 || st == 9.0) && abs(up.y) > 0.12) { roof = 1.0; gGlass = 0.0; gGloss = 0.0; gLit = 0.0; }   // les pentes des sheds sont du toit, pas des murs
       diffuseColor.rgb = mix(wall, top, roof);
+      vec2 outward = up.xz * (gl_FrontFacing ? 1.0 : -1.0) * 0.5;
+      gAo = mix(aoAt(vLocal.xz + outward, vLocal.y), aoAt(vLocal.xz, -100.0), roof);
       gGlass *= 1.0 - roof; gGloss *= 1.0 - roof; gLit *= 1.0 - roof;`)
     .replace("#include <normal_fragment_maps>", "#include <normal_fragment_maps>\nnormal = normalize(normal + gTilt);")
     .replace("#include <roughnessmap_fragment>", "#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, 0.1, gGloss);")
     .replace("#include <metalnessmap_fragment>", "#include <metalnessmap_fragment>\nmetalnessFactor = mix(metalnessFactor, 0.75, gGloss);")
-    .replace("#include <emissivemap_fragment>", "#include <emissivemap_fragment>\ntotalEmissiveRadiance += vec3(1.0, 0.64, 0.32) * gLit * 0.34;");
+    .replace("#include <emissivemap_fragment>", "#include <emissivemap_fragment>\ntotalEmissiveRadiance += vec3(1.0, 0.64, 0.32) * gLit * 0.34;")
+    .replace("#include <opaque_fragment>", AO_APPLY);
 };
+// Entre CM et CE, swissBUILDINGS3D ferme d'un bloc plein ce qui est en réalité ouvert : la toiture
+// d'acier passe au-dessus de l'avenue Piccard (voir crossing). On retire ses murs ; le toit, la marquise
+// et l'aile de CE restent ; la marquise, plus basse, est refaite en acier.
+const DISC = { x: -22.05, z: 7.13, r: 2.53, hx: -21.63, hz: 6.88, hr: 1.26 };   // l'Agora, relevée sur le maillage
+// La RTS : le contour de l'anneau (OpenStreetMap) et ses quatre boîtes (coins, hauteur ; maillage).
+const RTS_RING = [[21.8,-5.33],[21.84,-7.7],[22.15,-9.13],[22.95,-10.2],[24.34,-10.92],[25.94,-10.95],[27.49,-10.59],[28.74,-10.1],[29.67,-9.52],[30.23,-8.86],[31.0,-7.03],[31.54,-5.68],[32.28,-3.96],[32.97,-2.56],[33.96,-1.05],[35.09,0.21],[36.68,1.65],[37.62,2.82],[38.39,3.89],[38.96,5.39],[39.03,6.86],[38.93,8.12],[38.05,9.63],[36.73,10.66],[35.57,11.46],[33.93,12.08],[31.39,12.47],[29.36,12.46],[27.4,12.15],[25.78,11.75],[24.66,11.19],[23.72,10.42],[22.98,9.24],[22.52,7.95],[22.15,6.55],[21.97,4.77]];
+const RTS_BOXES = [
+  { c: [[22, -2.5], [25.6, -2.5], [25.6, 3.2], [22, 3.2]], top: 3.9 },
+  { c: [[22.1, 8.65], [26.65, 5.4], [28.7, 8.35], [24.1, 11.6]], top: 4.5 },
+  { c: [[24.87, -6.83], [29.8, -9.03], [32.03, -4.05], [27.1, -1.84]], top: 5.52 },
+  { c: [[29.71, 2.31], [37.19, 2.45], [37.04, 9.98], [29.56, 9.84]], top: 3.39 },
+];
+const inPoly = (x, z, p) => {
+  let on = false;
+  for (let i = 0, j = p.length - 1; i < p.length; j = i++) if ((p[i][1] > z) !== (p[j][1] > z) && x < ((p[j][0] - p[i][0]) * (z - p[i][1])) / (p[j][1] - p[i][1]) + p[i][0]) on = !on;
+  return on;
+};
+const inRts = (x, z) => x > 21 && x < 40 && z > -12 && z < 13 && inPoly(x, z, RTS_RING);
+const inRtsBox = (x, z) => RTS_BOXES.some((b) => inPoly(x, z, b.c));
+const inQN = (x, z) => x > -40.5 && x < -24.5 && z > 72 && z < 101;   // Quartier Nord, à côté du SwissTech
+const QN_COURT = [-33, 94];
+const inHall = (x, z) => x > -53.6 && x < -41.2 && z > 78.8 && z < 99.4;   // le SwissTech Convention Center
+const inDome = (x, z) => Math.hypot(x - 8.25, z - 58) < 3;                  // le Polydôme
+const inRedBox = (x, z) => x > 2.5 && x < 6.2 && z > 56 && z < 60.6;        // sa boîte de bois rouge
+const inOdyssea = (x, z) => x > 39.9 && x < 44.6 && z > -4.8 && z < 2.3;
+const inCrossing = (x, z) => x > -4.55 && x < 6.93 && z > 34.8 && z < 42.6 && !(x > 3.55 && z < 35.95);
+function openCrossing(geo) {
+  const p = geo.attributes.position, from = geo.index.array, keep = [];
+  for (let i = 0; i < from.length; i += 3) {
+    const a = from[i], b = from[i + 1], c = from[i + 2];
+    const ya = p.getY(a), yb = p.getY(b), yc = p.getY(c), top = Math.max(ya, yb, yc), low = Math.min(ya, yb, yc);
+    const gone = inCrossing((p.getX(a) + p.getX(b) + p.getX(c)) / 3, (p.getZ(a) + p.getZ(b) + p.getZ(c)) / 3) && top < 3.27 && !(top - low < 0.05 && low > 3.2);
+    const cx = (p.getX(a) + p.getX(b) + p.getX(c)) / 3, cz = (p.getZ(a) + p.getZ(b) + p.getZ(c)) / 3;
+    const flatLow = top - low < 0.05 && top < 1;       // le sol, pas le bâtiment
+    const rebuilt = (inRts(cx, cz) && !inRtsBox(cx, cz)) || inOdyssea(cx, cz) || inDome(cx, cz) || (inHall(cx, cz) && top > 1.7);
+    if (!gone && Math.hypot(cx - DISC.x, cz - DISC.z) > 3.2 && (flatLow || !rebuilt)) keep.push(a, b, c);
+  }
+  geo.setIndex(keep);
+}
 const draco = new DRACOLoader().setDecoderPath("geo/draco/");
 // Compile hors du fil principal avant d'entrer en scène : rien ne saccade pendant la descente.
 const warm = (object) => renderer.compileAsync(object, camera, scene).catch(() => {});
@@ -380,6 +485,7 @@ const buildingsReady = groundGate.then(() => new Promise((resolve, reject) => dr
   styles.anisotropy = 1;
   styles.needsUpdate = true;
   styleMap.value = styles;
+  openCrossing(geo);
   const mesh = new THREE.Mesh(geo, campusMat);
   mesh.castShadow = mesh.receiveShadow = true;
   // Le toit du Rolex est une coque ondulée : dans la carte d'ombres il passe un peu plus bas, pour ne
@@ -436,7 +542,7 @@ const LOBES = [[0, 0.12, 0, 0.72], [0.46, -0.08, 0.16, 0.52], [-0.42, -0.04, 0.3
 const treesReady = groundGate.then(() => loadBin(`${SET}trees.bin`, Float32Array)).then(async (a) => {
   const n = a.length / 4;
   const tiers = [
-    { within: 30, geo: crownGeometry(small ? 1 : 2, small ? LOBES.slice(0, 5) : LOBES), list: [] },
+    { within: 22, geo: crownGeometry(small ? 1 : 2, small ? LOBES.slice(0, 5) : LOBES), list: [] },
     { within: 80, geo: crownGeometry(1, LOBES.slice(0, small ? 3 : 5)), list: [] },
     { within: Infinity, geo: crownGeometry(small ? 0 : 1, [[0, 0, 0, 0.98]]), list: [] },
   ];
@@ -475,15 +581,32 @@ const treesReady = groundGate.then(() => loadBin(`${SET}trees.bin`, Float32Array
 const M = 1 / UNIT;                                  // un mètre en unités de scène
 const lin = (hex) => new THREE.Color(hex);
 const PLAIN = 0, LOUVRE = 1, TILE = 2, RENDER = 3, RIB = 4;
+// Une barre plus fine qu'un pixel ne peut pas se dessiner de façon stable : elle apparaît et disparaît
+// d'une image à l'autre, et toute la façade grouille. Alors, à l'approche du pixel, les barres
+// s'amincissent doucement jusqu'à rien (largeur en pixels, de BAR_PX[0] à BAR_PX[1]). Rien ne bascule
+// jamais d'un dessin à un autre : la façade reste la même à toute distance.
+const pxPerUnit = { value: 1000 };
+const AO_SITE = `
+  #ifdef USE_INSTANCING
+  vSite = (instanceMatrix * vec4(transformed, 1.0)).xyz + normalize((instanceMatrix * vec4(0.0, 0.0, 1.0, 0.0)).xyz) * 0.5;
+  #else
+  vSite = transformed;
+  #endif`;
+const BAR_PX = [0.9, 2.2];
 class Module {
-  constructor() { this.body = []; this.glass = []; }
-  paint(g, color, kind) {
+  // keep : ses pièces gardent leur largeur à toute distance.
+  constructor(keep = false) { this.body = []; this.glass = []; this.keep = keep; }
+  paint(g, color, kind, slim = null) {
     const geo = g.index ? g.toNonIndexed() : g, n = geo.attributes.position.count, c = lin(color);
     const col = new Float32Array(n * 3), k = new Float32Array(n).fill(kind);
     for (let i = 0; i < n; i++) col.set([c.r, c.g, c.b], i * 3);
     geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
     geo.setAttribute("aKind", new THREE.BufferAttribute(k, 1));
-    for (const name of Object.keys(geo.attributes)) if (!["position", "normal", "color", "aKind"].includes(name)) geo.deleteAttribute(name);
+    // aBar : le centre de la barre sur son axe fin, sa largeur (0 : pas une barre), cet axe (0 x, 1 y).
+    const bar = new Float32Array(n * 3);
+    if (slim) for (let i = 0; i < n; i++) bar.set(slim, i * 3);
+    geo.setAttribute("aBar", new THREE.BufferAttribute(bar, 3));
+    for (const name of Object.keys(geo.attributes)) if (!["position", "normal", "color", "aKind", "aBar"].includes(name)) geo.deleteAttribute(name);
     this.body.push(geo);
     return this;
   }
@@ -491,7 +614,9 @@ class Module {
     const g = new THREE.BoxGeometry(x1 - x0, y1 - y0, z1 - z0);
     if (tilt) g.rotateX(tilt);
     g.translate((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2);
-    return this.paint(g, color, kind);
+    const wide = x1 - x0, tall = y1 - y0;
+    const slim = this.keep || Math.min(wide, tall) >= 0.13 ? null : wide < tall ? [(x0 + x1) / 2, wide, 0] : [(y0 + y1) / 2, tall, 1];
+    return this.paint(g, color, kind, slim);
   }
   // Un plan de verre, en retrait.
   pane(x0, y0, x1, y1, z) {
@@ -545,7 +670,9 @@ function aluminium(rich) {
   // ME, MA, CM…, 7,20 × 3,75 m : deux rangs de tôles embouties à persiennes, puis une longue baie
   // dans un cadre arrondi, le vitrage en retrait.
   const m = new Module();
-  m.box(0, 0, 0, 7.2, 3.75, 0.05, JOINT);
+  // Le fond sombre s'arrête sous la baie : 3 cm derrière le verre, il le perçait à distance.
+  m.box(0, 0, 0, 7.2, 2.04, 0.05, JOINT); m.box(0, 3.58, 0, 7.2, 3.75, 0.05, JOINT);
+  m.box(0, 2.04, 0, 0.26, 3.58, 0.05, JOINT); m.box(6.94, 2.04, 0, 7.2, 3.58, 0.05, JOINT);
   for (const [y0, y1] of [[0.02, 0.93], [0.95, 1.86]]) {
     for (const [x0, x1] of [[0.03, 4.3], [4.34, 7.17]]) {
       if (rich) {
@@ -553,9 +680,11 @@ function aluminium(rich) {
         const half = (x0 + x1) / 2;
         m.sheet(x0 + 0.24, y0 + 0.2, half - 0.08, y1 - 0.2, 0.36, ALU, LOUVRE);
         m.sheet(half + 0.08, y0 + 0.2, x1 - 0.24, y1 - 0.2, 0.36, ALU, LOUVRE);
-      } else m.box(x0, y0, 0.05, x1, y1, 0.32, ALU, LOUVRE);
+      }
     }
   }
+  // De loin, une seule tôle : les joints de 2 à 4 cm grouilleraient sans rien montrer.
+  if (!rich) m.box(0.03, 0.02, 0.05, 7.17, 1.88, 0.32, ALU, LOUVRE);
   if (rich) m.pillow(0.04, 1.88, 7.16, 3.73, 0.16, 0.08, 0.2, ALU, PLAIN, [0.26, 2.04, 6.94, 3.58, 0.14], 0.04);
   else { m.box(0.04, 1.88, 0.05, 7.16, 2.04, 0.32, ALU); m.box(0.04, 3.58, 0.05, 7.16, 3.73, 0.32, ALU); m.box(0.04, 2.04, 0.05, 0.26, 3.58, 0.32, ALU); m.box(6.94, 2.04, 0.05, 7.16, 3.58, 0.32, ALU); }
   for (const x of [1.42, 2.72, 4.78, 6.42]) m.box(x - 0.04, 2.04, 0.06, x + 0.04, 3.58, 0.13, "#3b4648");
@@ -597,8 +726,10 @@ function rtsBox() {
   // RTS, 6,00 × 3,70 m : enduit blanc lisse, une baie de 4,20 m à quatre vantaux, châssis blancs.
   const m = new Module(), W = "#eceae5";
   m.pillow(0, 0, 6, 3.7, 0.001, 0, 0.16, W, RENDER, [0.9, 1.0, 5.1, 2.8, 0.001], 0, 1);
-  m.box(0.9, 1.0, 0.03, 5.1, 1.06, 0.09, "#dcdbd6"); m.box(0.9, 2.74, 0.03, 5.1, 2.8, 0.09, "#dcdbd6");
-  for (const x of [0.93, 1.95, 3, 4.05, 5.07]) m.box(x - 0.03, 1.0, 0.03, x + 0.03, 2.8, 0.09, "#dcdbd6");
+  // Châssis clairs de 14 cm : c'est eux qui dessinent la baie de loin.
+  const F = "#e6e7e6";
+  m.box(0.9, 1.0, 0.03, 5.1, 1.14, 0.11, F); m.box(0.9, 2.66, 0.03, 5.1, 2.8, 0.11, F);
+  for (const x of [0.97, 1.78, 2.59, 3.41, 4.22, 5.03]) m.box(x - 0.065, 1.0, 0.03, x + 0.065, 2.8, 0.11, F);
   m.pane(0.9, 1.0, 5.1, 2.8, 0.05);
   return m.done();
 }
@@ -609,10 +740,27 @@ function curtain(w, h, color, slim) {
   m.pane(0, 0, w, h, 0.04);
   return m.done();
 }
+function bcSide() {
+  // BC, le long côté : enduit gris clair, une haute fenêtre étroite par travée.
+  const m = new Module(true), G = "#c4c6c4";
+  m.box(0, 0, 0, 1.6, 3.7, 0.08, G, RENDER);
+  m.box(0.6, 0.55, 0.02, 0.98, 3.25, 0.1, "#dfe1e1");
+  m.pane(0.64, 0.6, 0.94, 3.2, 0.03);
+  return m.done();
+}
+function bcFront() {
+  // BC, le pignon vitré : grandes vitres à traverses, socle de lames.
+  const m = new Module(true), F = "#d9dbdb";
+  m.box(0, 0, 0.02, 2.4, 0.9, 0.14, "#b8bcbd", LOUVRE);
+  m.box(0, 0.9, 0.02, 0.08, 3.7, 0.12, F); m.box(0, 3.62, 0.02, 2.4, 3.7, 0.12, F); m.box(0, 2.27, 0.02, 2.4, 2.33, 0.12, F);
+  m.box(1.17, 0.9, 0.02, 1.23, 3.7, 0.11, F);
+  m.pane(0, 0.9, 2.4, 3.7, 0.04);
+  return m.done();
+}
 function darkMetal() {
   // BC : un bardage nervuré noir, de hauts vitrages étroits.
   const m = new Module();
-  m.box(0, 0, 0, 3.6, 3.7, 0.04, "#0d0e10");
+  m.box(0, 0, 0, 1.58, 3.7, 0.04, "#0d0e10"); m.box(1.58, 0, 0, 3.6, 0.1, 0.04, "#0d0e10"); m.box(1.58, 3.6, 0, 3.6, 3.7, 0.04, "#0d0e10");
   m.sheet(0, 0, 1.5, 3.7, 0.14, "#17181b", RIB);
   m.box(1.5, 0, 0.04, 1.58, 3.7, 0.16, "#17181b"); m.box(3.52, 0, 0.04, 3.6, 3.7, 0.16, "#17181b");
   m.pane(1.58, 0.1, 3.52, 3.6, 0.06);
@@ -620,9 +768,12 @@ function darkMetal() {
 }
 function timber() {
   // ArtLab : des lames de bois verticales.
-  const m = new Module();
-  m.box(0, 0, 0, 1.2, 3, 0.05, "#2f2013");
-  for (let x = 0.05; x < 1.2; x += 0.2) m.box(x, 0, 0.05, x + 0.13, 3, 0.13, "#7d5730");
+  // Sur les photos : de minces piles de béton clair, du verre entre elles, le bois reste sous le toit.
+  const m = new Module(true);
+  // Sur les photos : de larges lames de bois grisé, serrées, un étroit vitrage entre elles.
+  m.box(0, 0, 0, 0.62, 3, 0.3, "#c9c2b3", RENDER);
+  m.box(0.62, 2.75, 0.02, 0.95, 3, 0.12, "#a69f92", RENDER);
+  m.pane(0.62, 0.05, 0.95, 2.75, 0.06);
   return m.done();
 }
 function rtsSlab() {
@@ -630,15 +781,15 @@ function rtsSlab() {
   // Warren sont à l'intérieur, derrière le verre.
   const m = new Module(), W = "#eae8e3";
   m.box(0, 0, 0, 2.4, 1.3, 0.1, W, RENDER); m.box(0, 4.9, 0, 2.4, 6, 0.1, W, RENDER);
-  m.box(0, 1.3, 0.02, 0.07, 4.9, 0.14, "#c9cbcb");
-  m.box(0, 3.55, 0.02, 2.4, 3.61, 0.12, "#c9cbcb");
+  m.box(0, 1.3, 0.02, 0.14, 4.9, 0.14, "#dfe1e1");
+  m.box(0, 3.5, 0.02, 2.4, 3.64, 0.12, "#dfe1e1");
   m.pane(0, 1.3, 2.4, 4.9, 0.04);
   return m.done();
 }
 function redTop() {
   // L'étage en retrait des blocs ME, MA, CM, PH : ossature d'acier rouge, vitrage toute hauteur à
   // traverse, grand auvent noir porté par une poutre triangulée.
-  const m = new Module(), RED = "#b4371f", BLK = "#14151a", STEEL = "#23252a";
+  const m = new Module(), RED = "#d0471f", BLK = "#14151a", STEEL = "#23252a";
   m.box(0, 0, 0, 7.2, 0.35, 0.16, RED);
   for (const x of [0.5, 2.55, 4.6, 6.65]) {
     m.box(x - 0.1, 0.35, 0.02, x + 0.1, 3.4, 0.22, RED);
@@ -666,29 +817,707 @@ function mxBay() {
   m.pane(0.42, 1.14, 3.6, 3.52, 0.03);
   return m.done();
 }
-function steelPost() { const m = new Module(); m.box(-0.11, 0, -0.11, 0.11, 1, 0.11, "#2b2d31"); return m.done(); }
-function plainWall() { const m = new Module(); m.box(0, 0, 0, 1, 1, 0.12, "#ffffff", RENDER); return m.done(); }
-function shutter() { const m = new Module(); m.box(0, 0, 0, 1, 1, 0.07, "#b8bcc0", LOUVRE); return m.done(); }
-function ribbed() { const m = new Module(); m.box(0, 0, 0, 1, 1, 0.05, "#ffffff", RIB); return m.done(); }
-function mullion() { const m = new Module(); m.box(-0.035, 0, 0, 0.035, 1, 0.16, "#15171a"); return m.done(); }
+function steelPost() { const m = new Module(true); m.box(-0.11, 0, -0.11, 0.11, 1, 0.11, "#2b2d31"); return m.done(); }
+function plainWall() { const m = new Module(true); m.box(0, 0, 0, 1, 1, 0.12, "#ffffff", RENDER); return m.done(); }
+function shutter() {
+  const m = new Module(true);
+  m.box(0, 0, 0, 1, 1, 0.07, "#c3c7ca", LOUVRE);
+  m.box(-0.04, 0, 0.0, 0.0, 1, 0.1, "#dfe2e4"); m.box(1, 0, 0, 1.04, 1, 0.1, "#dfe2e4");
+  return m.done();
+}
+// ME D : l'auvent d'entrée, un faisceau de tubes d'acier inclinés, contre l'angle sud-ouest.
+function medCanopy() {
+  const m = new Module(true), S = 1 / M;
+  const v = (x, y, z) => new THREE.Vector3(x * S, y * S, z * S);
+  const bar = (a, b, w) => {
+    const g = new THREE.BoxGeometry(w * S, w * S, a.distanceTo(b));
+    g.applyMatrix4(new THREE.Matrix4().lookAt(a, b, new THREE.Vector3(0, 1, 0)));
+    const c = a.clone().add(b).multiplyScalar(0.5); g.translate(c.x, c.y, c.z);
+    m.paint(g, "#cfd3d6", PLAIN);
+  };
+  // Des cadres parallèles qui s'inclinent hors de la façade, reliés par des lisses et des diagonales.
+  const X = -23.95, Z0 = 18.4, N = 6, DZ = 0.42;
+  const top = (k) => v(X - 0.05, 2.25 - k * 0.05, Z0 + k * DZ), foot = (k) => v(X - 1.7 - k * 0.06, 0.32, Z0 + k * DZ + 0.25);
+  const knee = (k) => v(X - 1.45 - k * 0.05, 1.25, Z0 + k * DZ + 0.1);
+  for (let k = 0; k < N; k++) {
+    bar(foot(k), knee(k), 0.05); bar(knee(k), top(k), 0.045); bar(knee(k), v(X - 0.05, 1.05, Z0 + k * DZ), 0.035);
+    bar(foot(k), v(X - 0.05, 0.6, Z0 + k * DZ), 0.03);
+    if (k) {
+      bar(knee(k - 1), knee(k), 0.03); bar(top(k - 1), top(k), 0.03);
+      bar(knee(k - 1), top(k), 0.025); bar(foot(k - 1), knee(k), 0.025);
+    }
+  }
+  return bodyOf(m);
+}
+// Quartier Nord (logements, hôtel) : bardage gris clair, fenêtres verticales au rythme irrégulier ;
+// côté cour, des loggias aux panneaux de couleur.
+function qnBay(v) {
+  const m = new Module(true), G = "#c8c4ba", F = "#8f8f8a";
+  m.box(0, 0, 0, 2.4, 3.05, 0.1, G, RENDER);
+  for (const [x0, x1] of v === 0 ? [[0.25, 0.95]] : v === 1 ? [[1.35, 2.05]] : [[0.3, 0.9], [1.5, 2.1]]) {
+    m.box(x0 - 0.05, 0.55, 0.02, x1 + 0.05, 2.7, 0.12, F);
+    m.pane(x0, 0.6, x1, 2.65, 0.04);
+  }
+  const k = m.done();
+  return k;
+}
+function qnLoggia() {
+  const m = new Module(true);
+  m.box(0, 0, 0, 2.4, 0.3, 0.6, "#d6d3cb", RENDER);
+  m.box(0, 2.85, 0, 2.4, 3.05, 0.6, "#d6d3cb", RENDER);
+  m.box(0, 0.3, 0, 0.12, 2.85, 0.6, "#d6d3cb", RENDER);
+  m.box(1.25, 0.3, 0.02, 2.3, 2.85, 0.1, "#ffffff", PLAIN);   // le panneau de couleur (teinte d'instance)
+  m.box(0.12, 0.3, 0.45, 2.4, 0.95, 0.5, "#9a9a96", PLAIN);  // garde-corps
+  m.pane(0.15, 0.3, 1.25, 2.85, 0.03);
+  const k = m.done(); k.lit = true;
+  return k;
+}
+function ribbed() { const m = new Module(true); m.box(0, 0, 0, 1, 1, 0.05, "#ffffff", RIB); return m.done(); }
+function mullion() { const m = new Module(true); m.box(-0.035, 0, 0, 0.035, 1, 0.16, "#15171a"); return m.done(); }
+
+// Le passage de l'avenue Piccard, entre CM et CE : pas un bâtiment, une toiture tridimensionnelle d'acier
+// noir sur de hauts poteaux, ouverte dessous. La passerelle de la Méridienne franchit l'avenue au niveau
+// du premier étage, deux escaliers en U à paliers arrondis descendent à la cour pavée. Tracé d'après
+// OpenStreetMap, hauteurs d'après le maillage, dessin d'après les photos.
+const AGORA_GROUND = 0.6;
+let signMat = null;
+const lampMat = new THREE.MeshStandardMaterial({ color: "#2a2620", emissive: "#ffd7a3", emissiveIntensity: 0, side: THREE.DoubleSide });
+function crossing() {
+  const m = new Module(), S = 1 / M;                   // m.box travaille en mètres
+  const STEEL = "#1d1f24", CHORD = "#272a30", CONCRETE = "#a19e96", SETT = "#6b6a66", ROAD = "#404246";
+  const GROUND = 0.52, DECK = 1.97, ROOF = 3.23, DEPTH = 0.42, LOW = ROOF - DEPTH;
+  const box = (x0, y0, z0, x1, y1, z1, color, kind = PLAIN) => m.box(x0 * S, y0 * S, z0 * S, x1 * S, y1 * S, z1 * S, color, kind);
+  const v = (x, y, z) => new THREE.Vector3(x * S, y * S, z * S);
+  const beam = (a, b, w, h, color, kind = PLAIN) => {  // une barre de a vers b, gardant son dessus vers le haut
+    const d = b.clone().sub(a), g = new THREE.BoxGeometry(w * S, h * S, d.length());
+    g.applyMatrix4(new THREE.Matrix4().lookAt(a, b, new THREE.Vector3(0, 1, 0)));
+    g.translate((a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2);
+    m.paint(g, color, kind);
+  };
+  // Le sol : la cour pavée et l'avenue.
+  // (Le terrain descend vers le nord : 0,57 à 0,48 ; le sol le suit, juste au-dessus de la photo aérienne.)
+  beam(v(1.165, 0.57, 34.8), v(1.165, 0.49, 42.5), 11.53, 0.03, SETT, RENDER);
+  beam(v(0.8, 0.585, 34.8), v(0.8, 0.505, 42.5), 1.4, 0.03, ROAD, RENDER);
+  // La toiture : deux nappes de barres et leurs diagonales, trame de 3,60 m.
+  const B = 0.6, under = (x, z) => z > 37.25 || x > 2.25;
+  box(-4.68, ROOF - 0.03, 37.2, 7.04, ROOF, 42.43, STEEL);
+  box(2.2, ROOF - 0.03, 36, 7.04, ROOF, 37.2, STEEL);
+  for (let x = -4.6; x < 6.95; x += B) for (let z = 36.05; z < 42.3; z += B) {
+    if (!under(x + B / 2, z + B / 2)) continue;
+    const c = v(x + B / 2, LOW, z + B / 2);
+    for (const [i, j] of [[0, 0], [1, 0], [1, 1], [0, 1]]) beam(v(x + i * B, ROOF - 0.03, z + j * B), c, 0.035, 0.035, STEEL);
+    beam(c, v(x + B * 1.5, LOW, z + B / 2), 0.04, 0.04, CHORD);
+    beam(c, v(x + B / 2, LOW, z + B * 1.5), 0.04, 0.04, CHORD);
+  }
+  for (const [a, b] of [[[-4.68, 42.43], [7.04, 42.43]], [[-4.68, 37.2], [2.2, 37.2]], [[2.2, 36], [7.04, 36]], [[2.2, 36], [2.2, 37.2]]]) beam(v(a[0], ROOF - 0.05, a[1]), v(b[0], ROOF - 0.05, b[1]), 0.1, 0.16, STEEL);
+  box(-4.62, 2.6, 36.18, 2.2, 2.64, 37.23, STEEL);     // la marquise, côté sud
+  box(-4.62, 2.5, 36.18, 2.2, 2.6, 36.26, STEEL);
+  // Les poteaux, de part et d'autre de l'avenue et des escaliers.
+  for (const x of [-3.4, -0.3, 2.0, 5.1]) for (const z of [36.4, 39.0, 41.9]) box(x - 0.05, GROUND, z - 0.05, x + 0.05, z < 37 && x < 2.2 ? 2.64 : LOW, z + 0.05, STEEL);
+  // La passerelle, son retour nord, la galerie le long de CE ; tous bordés d'un garde-corps de béton.
+  const slab = (x0, z0, x1, z1) => {
+    box(x0, DECK - 0.2, z0, x1, DECK, z1, CONCRETE, RENDER);
+  };
+  const wall = (x0, z0, x1, z1) => box(x0, DECK, z0, x1, DECK + 0.17, z1, CONCRETE, RENDER);
+  slab(-4.6, 40.1, 6.93, 41.5); slab(-1.7, 41.5, -0.5, 42.5); slab(4.9, 36.1, 6.93, 40.1);
+  wall(-4.6, 41.46, -1.7, 41.5); wall(-0.5, 41.46, 6.93, 41.5);
+  wall(-4.6, 40.1, -1.0, 40.14); wall(-0.5, 40.1, 3.9, 40.14); wall(4.9, 36.1, 4.94, 40.1); wall(4.9, 36.1, 6.93, 36.14);
+  // Les escaliers : une volée sur le palier, une autre vers la passerelle ; joues de béton, palier arrondi.
+  const stair = (xA, xB, turn, foot, w) => {
+    const mid = (GROUND + DECK) / 2, cx = (xA + xB) / 2, r = (xB - xA) / 2 + w / 2;
+    for (const [x, y0, y1, z0] of [[xA, GROUND, mid, foot], [xB, DECK, mid, 40.1]]) {
+      const a = v(x, y0 - 0.06, z0), b = v(x, y1 - 0.06, turn);
+      beam(a, b, w, 0.12, CONCRETE, RENDER);
+      for (const side of [-1, 1]) {
+        const o = side * (w / 2 - 0.012);
+        beam(v(x + o, y0 + 0.08, z0), v(x + o, y1 + 0.08, turn), 0.024, 0.17, CONCRETE, RENDER);
+      }
+    }
+    box(xA - w / 2, mid - 0.12, turn - 0.02, xB + w / 2, mid, turn + 0.25, CONCRETE, RENDER);
+    const end = new THREE.CylinderGeometry(r * S, r * S, 0.12 * S, 20, 1, false, Math.PI / 2, Math.PI);
+    end.translate(cx * S, (mid - 0.06) * S, turn * S);
+    m.paint(end, CONCRETE, RENDER);
+    const rim = new THREE.CylinderGeometry(r * S, r * S, 0.29 * S, 20, 1, true, Math.PI / 2, Math.PI);
+    rim.translate(cx * S, (mid + 0.02) * S, turn * S);
+    m.paint(rim, CONCRETE, RENDER);
+  };
+  stair(2.9, 4.3, 38.1, 40.7, 0.42);
+  stair(-1.75, -0.75, 38.0, 40.7, 0.34);
+  // Rien n'est tourné vers un mur ici : toutes les faces restent, contrairement aux modules de façade.
+  const geo = mergeGeometries(m.body);
+  geo.scale(M, M, M);
+  const steel = new THREE.Mesh(geo, facadeMat.clone());
+  steel.material.onBeforeCompile = facadeMat.onBeforeCompile;
+  steel.material.side = THREE.DoubleSide;
+  steel.castShadow = steel.receiveShadow = true;
+  // Les luminaires, sous la nappe basse.
+  const lamp = new THREE.BoxGeometry(0.16, 0.02, 0.05), spots = [];
+  for (let x = -3.9; x < 6.8; x += 1.8) for (const z of [37.8, 39.6, 41.9]) spots.push(new THREE.Matrix4().makeTranslation(x, LOW - 0.04, z));
+  const lamps = new THREE.InstancedMesh(lamp, lampMat, spots.length);
+  spots.forEach((p, i) => lamps.setMatrixAt(i, p));
+  const group = new THREE.Group();
+  group.add(steel, lamps);
+  return group;
+}
+
+// L'Agora Lombard Odier, « le Disque » (ALICE, EPFL, 2019), place Cosandey : un disque de 31 m incliné
+// de 17°, posé sur le sol au sud-ouest, gradins de bois au-dessus, un grand oculus bordé de blanc,
+// une forêt de poteaux blancs sur le gravier, en dessous.
+function agora() {
+  const m = new Module(true), S = 1 / M, D = DISC;
+  const TIMBER = "#cdb893", RISER = "#7f6a4c", DARK = "#8c7350", WHITE_T = "#eeeeea", GRAVEL = "#c8c2b4";
+  const plane = (x, z) => 0.17427 * x + 0.25624 * z + 3.5945;
+  const len = Math.hypot(0.17427, 0.25624), ax = 0.17427 / len, az = 0.25624 / len, bx = -az, bz = ax;
+  const at = (t, u) => [D.x + ax * t + bx * u, D.z + az * t + bz * u];
+  const hole = { t: (D.hx - D.x) * ax + (D.hz - D.z) * az, u: (D.hx - D.x) * bx + (D.hz - D.z) * bz };
+  const mesh = (color, kind, build) => {
+    const pos = [], nrm = [];
+    const quad = (a, b, c, d) => {
+      const e1 = new THREE.Vector3(b[0] - a[0], b[1] - a[1], b[2] - a[2]), e2 = new THREE.Vector3(d[0] - a[0], d[1] - a[1], d[2] - a[2]);
+      const n = e1.cross(e2).normalize();
+      for (const p of [a, b, c, a, c, d]) { pos.push(p[0] * S, p[1] * S, p[2] * S); nrm.push(n.x, n.y, n.z); }
+    };
+    build(quad);
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(pos), 3));
+    g.setAttribute("normal", new THREE.BufferAttribute(new Float32Array(nrm), 3));
+    m.paint(g, color, kind);
+  };
+  const v = (p) => new THREE.Vector3(p[0] * S, p[1] * S, p[2] * S);
+  const bar = (a, b, w, color) => {
+    const d = v(b).sub(v(a)), g = new THREE.BoxGeometry(w * S, w * S, d.length());
+    g.applyMatrix4(new THREE.Matrix4().lookAt(v(a), v(b), new THREE.Vector3(0, 1, 0)));
+    const c = v(a).add(v(b)).multiplyScalar(0.5);
+    g.translate(c.x, c.y, c.z);
+    m.paint(g, color, RENDER);
+  };
+  // Les gradins : marches droites, de niveau, découpées dans le disque et son oculus.
+  const STEP = 0.2, chord = (t) => Math.sqrt(Math.max(0, D.r * D.r - t * t));
+  const holeAt = (t) => Math.sqrt(Math.max(0, hole.hr2 - (t - hole.t) ** 2));
+  hole.hr2 = D.hr * D.hr;
+  const steps = (color, treads) => mesh(color, RENDER, (quad) => {
+    for (let t = -D.r; t < D.r; t += STEP) {
+      const t1 = Math.min(D.r, t + STEP), [cx, cz] = at((t + t1) / 2, 0), y = plane(cx, cz) + 0.06;
+      const [nx, nz] = at(t1 + STEP / 2, 0), next = plane(nx, nz) + 0.06;
+      const spans = [];
+      const h0 = holeAt(t), h1 = holeAt(t1), inHole = h0 > 0 || h1 > 0;
+      if (inHole) { spans.push([-chord(t), -chord(t1), hole.u - h0, hole.u - h1], [hole.u + h0, hole.u + h1, chord(t), chord(t1)]); }
+      else spans.push([-chord(t), -chord(t1), chord(t), chord(t1)]);
+      for (const [a0, a1, b0, b1] of spans) {
+        const P = (tt, u, yy) => { const [x, z] = at(tt, u); return [x, yy, z]; };
+        if (treads) quad(P(t, b0, y), P(t1, b1, y), P(t1, a1, y), P(t, a0, y));
+        else if (t1 < D.r) quad(P(t1, a1, y), P(t1, b1, y), P(t1, b1, next), P(t1, a1, next));
+      }
+    }
+  });
+  steps(TIMBER, true);
+  steps(RISER, false);                                 // les contremarches, plus sombres : on lit les gradins
+  // Le dessous de bois, ses bords blancs, ses nervures, la main courante.
+  const ring = (cx, cz, r, i, n) => { const a = (i / n) * Math.PI * 2; return [cx + Math.cos(a) * r, cz + Math.sin(a) * r]; };
+  const N = 56;
+  mesh(DARK, RENDER, (quad) => {
+    for (let i = 0; i < N; i++) {
+      const o0 = ring(D.x, D.z, D.r, i, N), o1 = ring(D.x, D.z, D.r, i + 1, N), h0 = ring(D.hx, D.hz, D.hr, i, N), h1 = ring(D.hx, D.hz, D.hr, i + 1, N);
+      const P = (p) => [p[0], plane(p[0], p[1]) - 0.12, p[1]];
+      quad(P(o0), P(h0), P(h1), P(o1));
+    }
+  });
+  mesh(WHITE_T, RENDER, (quad) => {
+    for (let i = 0; i < N; i++) for (const [cx, cz, r] of [[D.x, D.z, D.r], [D.hx, D.hz, D.hr]]) {
+      const p = ring(cx, cz, r, i, N), q = ring(cx, cz, r, i + 1, N);
+      const lo = (e) => plane(e[0], e[1]) - 0.12, hi = (e) => plane(e[0], e[1]) + 0.05;
+      quad([p[0], lo(p), p[1]], [q[0], lo(q), q[1]], [q[0], hi(q), q[1]], [p[0], hi(p), p[1]]);
+    }
+  });
+  for (let i = 0; i < 24; i++) {
+    const o = ring(D.x, D.z, D.r, i, 24), h = ring(D.hx, D.hz, D.hr, i, 24);
+    bar([o[0], plane(o[0], o[1]) - 0.17, o[1]], [h[0], plane(h[0], h[1]) - 0.17, h[1]], 0.05, WHITE_T);
+  }
+  for (const r of [1.7, 2.15]) for (let i = 0; i < 28; i++) {
+    const p = ring(D.x + (D.hx - D.x) * (D.r - r) / (D.r - D.hr), D.z + (D.hz - D.z) * (D.r - r) / (D.r - D.hr), r, i, 28), q = ring(D.x + (D.hx - D.x) * (D.r - r) / (D.r - D.hr), D.z + (D.hz - D.z) * (D.r - r) / (D.r - D.hr), r, i + 1, 28);
+    bar([p[0], plane(p[0], p[1]) - 0.17, p[1]], [q[0], plane(q[0], q[1]) - 0.17, q[1]], 0.035, WHITE_T);
+  }
+  for (const [cx, cz, r, n] of [[D.x, D.z, D.r, 56], [D.hx, D.hz, D.hr, 32]]) for (let i = 0; i < n; i++) {
+    const p = ring(cx, cz, r, i, n), q = ring(cx, cz, r, i + 1, n);
+    const top = (e) => [e[0], plane(e[0], e[1]) + 0.3, e[1]];
+    bar(top(p), top(q), 0.022, WHITE_T);
+    if (i % 2 === 0) bar([p[0], plane(p[0], p[1]) + 0.08, p[1]], top(p), 0.018, WHITE_T);
+  }
+  // Les poteaux, de hauteurs et d'écarts variés ; seulement là où le disque a décollé.
+  let seed = 7;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  for (let i = 0; i < 64; i++) {
+    const a = rnd() * Math.PI * 2, r = D.hr + 0.25 + rnd() * (D.r - D.hr - 0.3);
+    const x = D.hx + Math.cos(a) * r, z = D.hz + Math.sin(a) * r;
+    if (Math.hypot(x - D.x, z - D.z) > D.r - 0.1) continue;
+    const top = plane(x, z) - 0.17;
+    if (top < AGORA_GROUND + 0.25) continue;
+    const g = new THREE.CylinderGeometry(0.055 * S, 0.055 * S, (top - AGORA_GROUND) * S, 10);
+    g.translate(x * S, (top + AGORA_GROUND) / 2 * S, z * S);
+    m.paint(g, WHITE_T, RENDER);
+  }
+  // Le gravier sous le disque : le sol y bombe (0,6 au bord, 0,94 au centre), il suit.
+  const pad = new THREE.CylinderGeometry(2.3 * S, 3.1 * S, 0.38 * S, 48);
+  pad.translate(D.x * S, (AGORA_GROUND + 0.19) * S, D.z * S);
+  m.paint(pad, GRAVEL, RENDER);
+  const geo = mergeGeometries(m.body);
+  geo.scale(M, M, M);
+  const mesh3 = new THREE.Mesh(geo, facadeMat.clone());
+  mesh3.material.onBeforeCompile = facadeMat.onBeforeCompile;
+  mesh3.material.side = THREE.DoubleSide;
+  mesh3.castShadow = mesh3.receiveShadow = true;
+  return mesh3;
+}
+// Odyssea (ODY), l'ancien bâtiment Swisscom, le « vaisseau spatial » : un tambour de verre sombre, un noyau
+// de béton qui le traverse, trois plateaux en éventail bordés de garde-corps, une plate-forme ronde et
+// le grand mât. Emprise d'après OpenStreetMap, niveaux d'après le maillage, dessin d'après photo.
+const odyGlassMat = new THREE.MeshStandardMaterial({ color: "#3a4852", roughness: 0.08, metalness: 0.85, side: THREE.DoubleSide });
+const odyRoomMat = new THREE.MeshStandardMaterial({ color: "#3a4852", roughness: 0.08, metalness: 0.85, emissive: "#ffb56b", emissiveIntensity: 0, side: THREE.DoubleSide });
+const beaconMat = new THREE.MeshStandardMaterial({ color: "#3a0505", emissive: "#ff2a12", emissiveIntensity: 0 });
+function odyssea() {
+  const m = new Module(true), S = 1 / M, G = 0.62;
+  const STEEL = "#8e9498", PALE = "#b9b7ad", WHITE_O = "#e4e4df", DARK = "#2a2d31";
+  const v = (x, y, z) => new THREE.Vector3(x * S, y * S, z * S);
+  const bar = (a, b, w, color, kind = PLAIN) => {
+    const d = a.clone().sub(b), g = new THREE.BoxGeometry(w * S, w * S, d.length());
+    g.applyMatrix4(new THREE.Matrix4().lookAt(a, b, new THREE.Vector3(0, 1, 0)));
+    const c = a.clone().add(b).multiplyScalar(0.5);
+    g.translate(c.x, c.y, c.z);
+    m.paint(g, color, kind);
+  };
+  const box = (x0, y0, z0, x1, y1, z1, color, kind = RENDER) => m.paint(new THREE.BoxGeometry((x1 - x0) * S, (y1 - y0) * S, (z1 - z0) * S).translate((x0 + x1) / 2 * S, (y0 + y1) / 2 * S, (z0 + z1) / 2 * S), color, kind);
+  const slab = (pts, y0, y1, color, kind = PLAIN) => {
+    const shape = new THREE.Shape(pts.map(([x, z]) => new THREE.Vector2(x * S, z * S)));
+    const g = new THREE.ExtrudeGeometry(shape, { depth: (y1 - y0) * S, bevelEnabled: false });
+    g.rotateX(Math.PI / 2);                            // le plan du tracé devient x, z ; l'épaisseur descend
+    g.translate(0, y1 * S, 0);
+    m.paint(g, color, kind);
+  };
+  // Le tambour : le contour, arrondi à l'est.
+  const drum = [[40.2, 1.31], [40.56, -3.24], [43.22, -3.19], [44.15, -3.13], [44.44, -2.89], [44.4, -1.93], [44.29, -1.0], [44.09, 0.19], [43.74, 0.65], [43.48, 1.42], [43.25, 1.96], [42.6, 2.05], [41.5, 1.82]];
+  const TOP = 4.35, FLOOR = (TOP - G - 0.45) / 5, pos = [], lit = [];
+  let seed = 3;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  drum.forEach((p, i) => {
+    const q = drum[(i + 1) % drum.length], len = Math.hypot(q[0] - p[0], q[1] - p[1]), bays = Math.max(1, Math.round(len / 0.6));
+    for (let k = 0; k < bays; k++) {
+      const a = [p[0] + (q[0] - p[0]) * k / bays, p[1] + (q[1] - p[1]) * k / bays], b = [p[0] + (q[0] - p[0]) * (k + 1) / bays, p[1] + (q[1] - p[1]) * (k + 1) / bays];
+      pos.push(a[0], G + 0.45, a[1], b[0], G + 0.45, b[1], b[0], TOP, b[1], a[0], G + 0.45, a[1], b[0], TOP, b[1], a[0], TOP, a[1]);
+      bar(v(a[0], G, a[1]), v(a[0], TOP, a[1]), 0.035, DARK);
+      for (let f = 0; f < 5; f++) if (rnd() < 0.34) {
+        const y = G + 0.45 + f * FLOOR, nx = (b[1] - a[1]) / len, nz = -(b[0] - a[0]) / len, o = -0.02;
+        lit.push(a[0] - nx * o, y + 0.1, a[1] - nz * o, b[0] - nx * o, y + 0.1, b[1] - nz * o, b[0] - nx * o, y + FLOOR - 0.12, b[1] - nz * o, a[0] - nx * o, y + 0.1, a[1] - nz * o, b[0] - nx * o, y + FLOOR - 0.12, b[1] - nz * o, a[0] - nx * o, y + FLOOR - 0.12, a[1] - nz * o);
+      }
+    }
+    for (let f = 0; f <= 5; f++) bar(v(p[0], G + 0.45 + f * FLOOR, p[1]), v(q[0], G + 0.45 + f * FLOOR, q[1]), 0.06, "#596268");
+  });
+  const skin = (arr, mat) => {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(arr), 3));
+    g.computeVertexNormals();
+    const o = new THREE.Mesh(g, mat);
+    return o;
+  };
+  // Le socle en retrait, sombre ; le toit qui déborde en lentille.
+  slab(drum.map(([x, z]) => [x + (42.3 - x) * 0.05, z + (-0.6 - z) * 0.05]), G, G + 0.45, DARK);
+  slab(drum.map(([x, z]) => [x + (x - 42.3) * 0.05, z + (z + 0.6) * 0.05]), TOP, TOP + 0.09, WHITE_O);
+  // Le noyau, les deux lames de service et l'escalier vitré entre elles, les conduites.
+  box(41.85, G, -2.95, 42.55, 7.3, -2.25, PALE);
+  box(41.76, G, -4.4, 42.14, 5.05, -3.2, PALE); box(42.6, G, -4.4, 43.0, 5.05, -3.2, PALE);
+  box(42.14, G, -4.1, 42.6, 4.75, -3.2, "#7f8a90");
+  for (let y = G + 0.3; y < 4.6; y += 0.62) box(42.2, y, -4.13, 42.54, y + 0.42, -4.08, WHITE_O, PLAIN);
+  for (const x of [43.15, 43.32]) m.paint(new THREE.CylinderGeometry(0.05 * S, 0.05 * S, (5.3 - G) * S, 8).translate(x * S, (5.3 + G) / 2 * S, -3.1 * S), "#aeb3b5", PLAIN);
+  // Les plateaux en éventail : plancher mince, sous-face sombre, garde-corps.
+  const fan = [];
+  for (let i = 0; i <= 14; i++) { const a = Math.PI * (1.02 - i / 14 * 1.04); fan.push([42.1 + Math.cos(a) * 1.18, -2.45 + Math.sin(a) * 0.72]); }
+  fan.push([42.72, -3.95], [41.72, -3.95]);
+  const rail = (pts, y, h) => pts.forEach((p, i) => {
+    const q = pts[(i + 1) % pts.length];
+    bar(v(p[0], y + h, p[1]), v(q[0], y + h, q[1]), 0.022, WHITE_O);
+    bar(v(p[0], y + h * 0.5, p[1]), v(q[0], y + h * 0.5, q[1]), 0.012, WHITE_O);
+    bar(v(p[0], y, p[1]), v(p[0], y + h, p[1]), 0.018, WHITE_O);
+  });
+  for (const y of [5.2, 6.1, 7.0]) {
+    slab(fan, y - 0.07, y, STEEL);
+    rail(fan, y, 0.19);
+    for (const [x, z] of [[41.1, -2.2], [43.1, -2.2], [42.1, -1.75]]) bar(v(x, y - 0.07, z), v(42.2, y - 0.55, -2.6), 0.04, DARK);
+  }
+  // La plate-forme ronde au sommet.
+  const round = [];
+  for (let i = 0; i < 28; i++) { const a = i / 28 * Math.PI * 2; round.push([42.45 + Math.cos(a) * 0.76, -2.05 + Math.sin(a) * 0.76]); }
+  slab(round, 7.22, 7.3, WHITE_O);
+  rail(round, 7.3, 0.19);
+  box(42.1, 7.3, -2.9, 42.34, 7.75, -2.66, PALE);
+  // Le mât, par tronçons de plus en plus fins.
+  for (const [y0, y1, r] of [[7.75, 9.2, 0.085], [9.2, 11, 0.055], [11, 12.6, 0.03]]) m.paint(new THREE.CylinderGeometry(r * 0.8 * S, r * S, (y1 - y0) * S, 10).translate(42.2 * S, (y0 + y1) / 2 * S, -2.8 * S), "#9aa0a4", PLAIN);
+  const geo = mergeGeometries(m.body);
+  geo.scale(M, M, M);
+  const steel = new THREE.Mesh(geo, facadeMat.clone());
+  steel.material.onBeforeCompile = facadeMat.onBeforeCompile;
+  steel.material.side = THREE.DoubleSide;
+  steel.castShadow = steel.receiveShadow = true;
+  const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.06, 10, 8), beaconMat);
+  beacon.position.set(42.2, 12.64, -2.8);
+  const group = new THREE.Group();
+  group.add(steel, skin(pos, odyGlassMat), skin(lit, odyRoomMat), beacon);
+  return group;
+}
+// Des morceaux de surface, posés en coordonnées du campus.
+function surface(m, color, kind, build) {
+  const pos = [], nrm = [], S = 1 / M;
+  build((a, b, c, d) => {
+    const e1 = new THREE.Vector3(b[0] - a[0], b[1] - a[1], b[2] - a[2]), e2 = new THREE.Vector3(d[0] - a[0], d[1] - a[1], d[2] - a[2]);
+    const n = e1.cross(e2).normalize();
+    for (const p of [a, b, c, a, c, d]) { pos.push(p[0] * S, p[1] * S, p[2] * S); nrm.push(n.x, n.y, n.z); }
+  });
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(pos), 3));
+  g.setAttribute("normal", new THREE.BufferAttribute(new Float32Array(nrm), 3));
+  m.paint(g, color, kind);
+}
+function bodyOf(m) {
+  const geo = mergeGeometries(m.body);
+  geo.scale(M, M, M);
+  const o = new THREE.Mesh(geo, facadeMat.clone());
+  o.material.onBeforeCompile = facadeMat.onBeforeCompile;
+  o.material.side = THREE.DoubleSide;
+  o.castShadow = o.receiveShadow = true;
+  return o;
+}
+function glassSkin(tris, mat) {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(tris), 3));
+  g.computeVertexNormals();
+  return new THREE.Mesh(g, mat);
+}
+const medGlassMat = new THREE.MeshStandardMaterial({ color: "#7b8c96", roughness: 0.1, metalness: 0.6, emissive: "#eef4ff", emissiveIntensity: 0 });
+const qnGlassMat = new THREE.MeshStandardMaterial({ color: "#56646c", roughness: 0.1, metalness: 0.6, emissive: "#ffcf96", emissiveIntensity: 0 });
+const stccGlassMat = new THREE.MeshStandardMaterial({ color: "#56788c", roughness: 0.08, metalness: 0.8, emissive: "#ffb366", emissiveIntensity: 0, side: THREE.DoubleSide });
+const stccUnderMat = new THREE.MeshStandardMaterial({ color: "#a39c90", roughness: 0.45, metalness: 0.5, emissive: "#ffb366", emissiveIntensity: 0, side: THREE.DoubleSide });
+const hallGlassMat = new THREE.MeshStandardMaterial({ color: "#56788c", roughness: 0.08, metalness: 0.8, emissive: "#ffb063", emissiveIntensity: 0, side: THREE.DoubleSide });
+// Le SwissTech Convention Center : un toit plié, argent dessus, noir dessous, posé sur une haute salle de
+// verre à fins montants. Les douze sommets de son toit viennent du maillage ; le débord d'après photos.
+function swissTech() {
+  const m = new Module(true), S = 1 / M;
+  const R1 = [-51.1, 5.43, 89.25], R2 = [-43.65, 5.43, 89.34], S1 = [-51.32, 4.64, 79.35], S2 = [-43.19, 4.64, 79.45];
+  const W = [-52.99, 3.76, 90.66], E = [-41.72, 3.81, 90.78], N1 = [-49.42, 3.76, 98.72], N2 = [-45.51, 3.72, 98.77];
+  // Le débord : chaque bord dépasse le verre, le sud surtout, qui se relève.
+  const out = (p, c, k, up = 0) => [p[0] + (p[0] - c[0]) * k, p[1] + up, p[2] + (p[2] - c[2]) * k];
+  const C = [-47.3, 0, 89.3];
+  const s1 = out(S1, C, 0.42, 1.25), s2 = out(S2, C, 0.42, 1.25), w = out(W, C, 0.16), e = out(E, C, 0.16), n1 = out(N1, C, 0.1), n2 = out(N2, C, 0.1);
+  const faces = (q) => { q(s1, s2, R2, R1); q(R1, R2, n2, n1); q(s1, R1, w, w); q(s2, e, R2, R2); q(w, R1, n1, n1); q(R2, e, n2, n2); };
+  const low = (p) => [p[0], p[1] - 0.16, p[2]];
+  surface(m, "#d7dbde", LOUVRE, (q) => faces(q));     // des écailles d'aluminium, claires vu d'en haut
+  const under = new Module(true);
+  surface(under, "#ffffff", PLAIN, (q) => faces((a, b, c, d) => q(low(d), low(c), low(b), low(a))));
+  surface(m, "#b4b9bd", PLAIN, (q) => { const rim = [s1, s2, e, n2, n1, w]; rim.forEach((p, i) => { const r = rim[(i + 1) % 6]; q(low(p), low(r), r, p); }); });
+  // La salle de verre, ses montants verticaux serrés.
+  const hall = [[S1, 1.6], [S2, 1.6], [E, 1.6], [N2, 0], [N1, 0], [W, 1.6]], glass = [];
+  const bar = (a, b, wd, color) => {
+    const va = new THREE.Vector3(a[0] * S, a[1] * S, a[2] * S), vb = new THREE.Vector3(b[0] * S, b[1] * S, b[2] * S), g = new THREE.BoxGeometry(wd * S, wd * S, va.distanceTo(vb));
+    g.applyMatrix4(new THREE.Matrix4().lookAt(va, vb, new THREE.Vector3(0, 1, 0)));
+    const c = va.clone().add(vb).multiplyScalar(0.5); g.translate(c.x, c.y, c.z);
+    m.paint(g, color, PLAIN);
+  };
+  hall.forEach(([p, f0], i) => {
+    const [r, f1] = hall[(i + 1) % 6], len = Math.hypot(r[0] - p[0], r[2] - p[2]), n = Math.max(2, Math.round(len / 0.45));
+    glass.push(p[0], f0, p[2], r[0], f1, r[2], r[0], r[1] - 0.16, r[2], p[0], f0, p[2], r[0], r[1] - 0.16, r[2], p[0], p[1] - 0.16, p[2]);
+    for (let k = 0; k <= n; k++) {
+      const t = k / n, x = p[0] + (r[0] - p[0]) * t, z = p[2] + (r[2] - p[2]) * t, y0 = f0 + (f1 - f0) * t, y1 = p[1] + (r[1] - p[1]) * t - 0.16;
+      bar([x, y0, z], [x, y1, z], 0.05, "#20262b");
+    }
+  });
+  const g = new THREE.Group();
+  const ug = mergeGeometries(under.body); ug.scale(M, M, M);
+  const um = new THREE.Mesh(ug, stccUnderMat); um.castShadow = true;
+  g.add(bodyOf(m), um, glassSkin(glass, stccGlassMat));
+  return g;
+}
+// Le Polydôme (Julius Natterer, 1991) : une coque en coussin, zinc nervuré, dont les rives se relèvent
+// entre les angles, quatre lanterneaux au sommet ; à côté, la boîte de bois rouge.
+function polydome() {
+  const m = new Module(true), S = 1 / M, X = 8.25, Z = 58, TOPY = 2.17, RING = 22, SECT = 96, turn = -0.17;
+  const plan = (a) => {                                // un carré aux angles très arrondis
+    const c = Math.abs(Math.cos(a - turn)), n = Math.abs(Math.sin(a - turn));
+    return 2.42 / (c ** 3.4 + n ** 3.4) ** (1 / 3.4);
+  };
+  const eave = (a) => 0.82 + 0.5 * Math.cos(2 * (a - turn)) ** 2;
+  const at = (a, r) => { const rho = plan(a) * r, e = eave(a); return [X + Math.cos(a) * rho, e + (TOPY - e) * (1 - r ** 2.1), Z + Math.sin(a) * rho]; };
+  for (const [color, odd] of [["#bcc3c8", 0], ["#a4acb2", 1]]) surface(m, color, PLAIN, (q) => {
+    for (let i = odd; i < SECT; i += 2) for (let j = 0; j < RING; j++) {
+      const a0 = i / SECT * Math.PI * 2, a1 = (i + 1) / SECT * Math.PI * 2, r0 = j / RING, r1 = (j + 1) / RING;
+      q(at(a0, r1), at(a1, r1), at(a1, r0), at(a0, r0));
+    }
+  });
+  // Les lanterneaux.
+  for (let k = 0; k < 4; k++) {
+    const a = turn + k * Math.PI / 2 + Math.PI / 4, [x, y, z] = at(a, 0.34), h = 0.2;
+    m.paint(new THREE.BoxGeometry(0.46 * S, 0.1 * S, 0.46 * S).rotateY(-turn).translate(x * S, (y + 0.02) * S, z * S), "#e6e7e6", PLAIN);
+    m.paint(new THREE.BoxGeometry(0.36 * S, 0.11 * S, 0.36 * S).rotateY(-turn).translate(x * S, (y + 0.03) * S, z * S), "#1f2a33", PLAIN);
+  }
+  // Le mur de verre sous la rive, en retrait.
+  const glass = [];
+  for (let i = 0; i < SECT; i++) {
+    const a0 = i / SECT * Math.PI * 2, a1 = (i + 1) / SECT * Math.PI * 2, p = at(a0, 0.97), r = at(a1, 0.97);
+    glass.push(p[0], 0.4, p[2], r[0], 0.4, r[2], r[0], r[1], r[2], p[0], 0.4, p[2], r[0], r[1], r[2], p[0], p[1], p[2]);
+  }
+  // La boîte rouge.
+  surface(m, "#b3402c", RIB, (q) => {                  // ses murs seulement : le toit de gravier reste celui du maillage
+    const c = [[2.58, 56.26], [5.82, 56.26], [5.82, 60.32], [2.58, 60.32]];
+    c.forEach((p, i) => { const r = c[(i + 1) % 4]; q([p[0], 0.3, p[1]], [r[0], 0.3, r[1]], [r[0], 1.74, r[1]], [p[0], 1.74, p[1]]); });
+  });
+  const g = new THREE.Group();
+  g.add(bodyOf(m), glassSkin(glass, hallGlassMat));
+  return g;
+}
+// BC : un grand toit sombre en coin, qui se relève et déborde sur la façade de verre, une ligne rouge dessous.
+// BC : un grand toit plat et mince, gris clair, qui déborde partout et se relève vers le pignon vitré ;
+// sous lui, l'étage d'attique en verre ; au pied du pignon, l'auvent rouge de l'entrée.
+function bcRoof() {
+  const m = new Module(true);
+  const X0 = -86.3, X1 = -77.7, Z0 = -4.1, Z1 = 9.6, YB = 4.02, YF = 4.55;
+  const y = (z, dy) => YB + (YF - YB) * (Z1 - z) / (Z1 - Z0) + dy;
+  const face = (dy) => [[X0, y(Z0, dy), Z0], [X1, y(Z0, dy), Z0], [X1, y(Z1, dy), Z1], [X0, y(Z1, dy), Z1]];
+  surface(m, "#a9adb0", PLAIN, (q) => { const [a, b, c, d] = face(0); q(d, c, b, a); });
+  surface(m, "#cfd1d0", PLAIN, (q) => { const [a, b, c, d] = face(-0.07); q(a, b, c, d); });
+  surface(m, "#b9bcbd", PLAIN, (q) => {
+    const t = face(0), u = face(-0.07);
+    for (let i = 0; i < 4; i++) { const j = (i + 1) % 4; q(u[i], u[j], t[j], t[i]); }
+  });
+  // Les panneaux clairs sous le débord avant, comme sur la photo.
+  surface(m, "#eceeee", PLAIN, (q) => { for (let i = 0; i < 4; i++) { const x = -84.8 + i * 1.6, z = -3.4; q([x, y(z, -0.075), z], [x + 1.1, y(z, -0.075), z], [x + 1.1, y(z + 0.5, -0.075), z + 0.5], [x, y(z + 0.5, -0.075), z + 0.5]); } });
+  // L'attique vitré, en retrait sous le toit.
+  surface(m, "#dfe1e1", PLAIN, (q) => { const c = [[-85.2, -1.9], [-78.8, -1.9], [-78.8, 8.8], [-85.2, 8.8]]; c.forEach((p, i) => { const r = c[(i + 1) % 4]; q([p[0], 3.83, p[1]], [r[0], 3.83, r[1]], [r[0], 3.87, r[1]], [p[0], 3.87, p[1]]); }); });
+  // L'auvent rouge, au pied du pignon.
+  m.paint(new THREE.BoxGeometry(1.3 / M, 0.06 / M, 0.55 / M).translate(-83.2 / M, 0.72 / M, -2.3 / M), "#c8202a", PLAIN);
+  m.paint(new THREE.BoxGeometry(1.3 / M, 0.42 / M, 0.04 / M).translate(-83.2 / M, 0.5 / M, -2.56 / M), "#c8202a", PLAIN);
+  const g = new THREE.Group();
+  const att = [];
+  const c = [[-85.2, -1.9], [-78.8, -1.9], [-78.8, 8.8], [-85.2, 8.8]];
+  c.forEach((p, i) => { const r = c[(i + 1) % 4]; att.push(p[0], 3.87, p[1], r[0], 3.87, r[1], r[0], y(r[1], -0.08), r[1], p[0], 3.87, p[1], r[0], y(r[1], -0.08), r[1], p[0], y(p[1], -0.08), p[1]); });
+  g.add(bodyOf(m), glassSkin(att, hallGlassMat));
+  return g;
+}
+// Le lissage d'un contour, et son décalage vers l'intérieur (d < 0) ou l'extérieur.
+const chaikin = (p) => p.flatMap((a, i) => { const b = p[(i + 1) % p.length]; return [[a[0] * 0.75 + b[0] * 0.25, a[1] * 0.75 + b[1] * 0.25], [a[0] * 0.25 + b[0] * 0.75, a[1] * 0.25 + b[1] * 0.75]]; });
+function offsetLine(p, d) {
+  let area = 0;
+  p.forEach((a, i) => { const b = p[(i + 1) % p.length]; area += a[0] * b[1] - b[0] * a[1]; });
+  const sgn = area > 0 ? 1 : -1;
+  return p.map((a, i) => {
+    const u = p[(i + p.length - 1) % p.length], v = p[(i + 1) % p.length];
+    let nx = (v[1] - u[1]) * sgn, nz = -(v[0] - u[0]) * sgn;
+    const l = Math.hypot(nx, nz) || 1;
+    return [a[0] + nx / l * d, a[1] + nz / l * d];
+  });
+}
+function prism(pts, y0, y1) {                          // un contour extrudé, en unités de scène
+  const g = new THREE.ExtrudeGeometry(new THREE.Shape(pts.map(([x, z]) => new THREE.Vector2(x, z))), { depth: y1 - y0, bevelEnabled: false, curveSegments: 1 });
+  g.rotateX(Math.PI / 2);
+  g.translate(0, y1, 0);
+  return g;
+}
+const rtsCoreMat = new THREE.MeshStandardMaterial({ color: "#e4e1d8", roughness: 0.7, emissive: "#fff1d6", emissiveIntensity: 0 });
+const rtsGroundMat = new THREE.MeshStandardMaterial({ color: "#e9e6dc", roughness: 0.8, emissive: "#ffd9a0", emissiveIntensity: 0 });
+const rtsRezMat = new THREE.MeshStandardMaterial({ color: "#7f9aab", roughness: 0.1, metalness: 0.6, emissive: "#fff0cf", emissiveIntensity: 0, side: THREE.DoubleSide });
+const rtsUnderMat = new THREE.MeshStandardMaterial({ color: "#d8d0bb", roughness: 0.6, emissive: "#ffdca6", emissiveIntensity: 0 });
+const rtsRibbonMat = new THREE.MeshStandardMaterial({ color: "#a9c7da", roughness: 0.06, metalness: 0.35, transparent: true, opacity: 0.46, depthWrite: false, side: THREE.DoubleSide });
+const rtsShedGlassMat = new THREE.MeshStandardMaterial({ color: "#6f8ea3", roughness: 0.08, metalness: 0.7, emissive: "#ffe3b8", emissiveIntensity: 0, side: THREE.DoubleSide });
+// La RTS (OFFICE Kersten Geers David Van Severen, 2025) : un anneau continu, ruban de verre sur un socle
+// de lames d'argent, suspendu à 8 m, que traversent quatre boîtes blanches ; sur l'anneau, de longs sheds
+// de zinc vitrés sur leur face raide ; dessous, un rez en retrait sur poteaux.
+function rtsRing() {
+  const m = new Module(true), S = 1 / M, P = chaikin(chaikin(RTS_RING));
+  const SOFFIT = 1.72, SILL = 1.96, HEAD = 2.6, ROOF = 2.72, GROUND = 0.3;
+  const band = (y0, y1, off, color, kind) => surface(m, color, kind, (q) => {
+    const L = offsetLine(P, off);
+    L.forEach((a, i) => { const b = L[(i + 1) % L.length]; q([a[0], y0, a[1]], [b[0], y0, b[1]], [b[0], y1, b[1]], [a[0], y1, a[1]]); });
+  });
+  const bar = (a, b, w, color) => {
+    const va = new THREE.Vector3(a[0] * S, a[1] * S, a[2] * S), vb = new THREE.Vector3(b[0] * S, b[1] * S, b[2] * S);
+    const g = new THREE.BoxGeometry(w * S, w * S, va.distanceTo(vb));
+    g.applyMatrix4(new THREE.Matrix4().lookAt(va, vb, new THREE.Vector3(0, 1, 0)));
+    const c = va.clone().add(vb).multiplyScalar(0.5); g.translate(c.x, c.y, c.z);
+    m.paint(g, color, PLAIN);
+  };
+  band(SOFFIT, SILL, 0.02, "#c4cacd", LOUVRE);         // le socle de lames
+  band(HEAD, ROOF + 0.02, 0.03, "#eeeeea", RENDER);    // la rive blanche
+  // Le long du contour : un montant tous les 2,40 m, une croix d'acier tous les 7,20 m, derrière le verre.
+  let walked = 0, nextPost = 0, nextBrace = 0;
+  const inner = offsetLine(P, -0.28);
+  P.forEach((a, i) => {
+    const j = (i + 1) % P.length, b = P[j], seg = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    if (walked >= nextPost) { nextPost = walked + 0.4; bar([a[0], SILL, a[1]], [a[0], HEAD, a[1]], 0.035, "#e2e5e6"); }
+    if (walked >= nextBrace) {
+      nextBrace = walked + 1.2;
+      const k = (i + 4) % P.length, p = inner[i], r = inner[k];
+      bar([p[0], SILL, p[1]], [r[0], HEAD, r[1]], 0.05, "#8f9a9f"); bar([p[0], HEAD, p[1]], [r[0], SILL, r[1]], 0.05, "#8f9a9f");
+      bar([p[0], SILL, p[1]], [p[0], HEAD, p[1]], 0.07, "#8f9a9f");
+    }
+    walked += seg;
+  });
+  // Le rez : des poteaux sous l'anneau.
+  const under = offsetLine(P, -1.3);
+  let run = 0, nextCol = 0;
+  under.forEach((a, i) => {
+    const b = under[(i + 1) % under.length];
+    if (run >= nextCol) { nextCol = run + 3; m.paint(new THREE.CylinderGeometry(0.07 * S, 0.07 * S, (SOFFIT - GROUND) * S, 10).translate(a[0] * S, (SOFFIT + GROUND) / 2 * S, a[1] * S), "#eeeeea", RENDER); }
+    run += Math.hypot(b[0] - a[0], b[1] - a[1]);
+  });
+  // Les fenêtres du rez, en bandes : trois vantaux, un trumeau, et un hall vitré toute hauteur au sud.
+  const rez = offsetLine(P, -2.27), rezGlass = [];
+  let along = 0, nextBay = 0;
+  rez.forEach((a, i) => {
+    const b = rez[(i + 1) % rez.length], seg = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    if (along >= nextBay) {
+      nextBay = along + 1.15;
+      const c = rez[(i + 3) % rez.length], foyer = a[1] < 3.5 && a[1] > -2 && a[0] > 26;
+      const y0 = foyer ? 0.5 : 0.82, y1 = foyer ? 1.62 : 1.42;
+      rezGlass.push(a[0], y0, a[1], c[0], y0, c[1], c[0], y1, c[1], a[0], y0, a[1], c[0], y1, c[1], a[0], y1, a[1]);
+      for (const t of [0, 0.5, 1]) { const x = a[0] + (c[0] - a[0]) * t, z = a[1] + (c[1] - a[1]) * t; bar([x, y0, z], [x, y1, z], 0.03, "#dfe1e1"); }
+      bar([a[0], y0, a[1]], [c[0], y0, c[1]], 0.03, "#dfe1e1"); bar([a[0], y1, a[1]], [c[0], y1, c[1]], 0.03, "#dfe1e1");
+    }
+    along += seg;
+  });
+  // Les sheds : des bandes parallèles, découpées par l'anneau et les boîtes.
+  const dx = 0.62, dz = -0.78, nx = 0.78, nz = 0.62, W = 1.12, PEAK = 0.36;
+  const clear = offsetLine(P, -0.42), shedGlass = [];
+  const free = (x, z) => inPoly(x, z, clear) && !RTS_BOXES.some((b) => inPoly(x, z, offsetLine(b.c, 0.12)));
+  const spans = [];
+  for (let d = -16; d < 16; d += W) {
+    let from = null;
+    for (let t = -26; t <= 26; t += 0.15) {
+      const ox = 30 + nx * d + dx * t, oz = 1 + nz * d + dz * t;
+      const ok = free(ox, oz) && free(ox + nx * W, oz + nz * W);
+      if (ok && from === null) from = t;
+      if ((!ok || t >= 26) && from !== null) { if (t - from > 0.7) spans.push([d, from, t - 0.15]); from = null; }
+    }
+  }
+  const at = (d, t, y) => [30 + nx * d + dx * t, y, 1 + nz * d + dz * t];
+  surface(m, "#b6bcc0", PLAIN, (q) => spans.forEach(([d, a, b]) => {
+    q(at(d, a, ROOF), at(d, b, ROOF), at(d + W * 0.82, b, ROOF + PEAK), at(d + W * 0.82, a, ROOF + PEAK));
+    q(at(d, a, ROOF), at(d + W * 0.82, a, ROOF + PEAK), at(d + W, a, ROOF), at(d + W, a, ROOF));
+    q(at(d, b, ROOF), at(d + W, b, ROOF), at(d + W * 0.82, b, ROOF + PEAK), at(d + W * 0.82, b, ROOF + PEAK));
+  }));
+  // Quelques panneaux sombres sur le zinc, comme sur les photos.
+  surface(m, "#141c28", PLAIN, (q) => spans.forEach(([d, a, b], i) => {
+    if (i % 3 !== 0 || b - a < 3) return;
+    const c = (a + b) / 2, h = Math.min(1.6, (b - a) / 3), lift = 0.012;
+    q(at(d + W * 0.2, c - h, ROOF + PEAK * 0.24 + lift), at(d + W * 0.2, c + h, ROOF + PEAK * 0.24 + lift), at(d + W * 0.68, c + h, ROOF + PEAK * 0.83 + lift), at(d + W * 0.68, c - h, ROOF + PEAK * 0.83 + lift));
+  }));
+  for (const [d, a, b] of spans) {
+    const p = at(d + W * 0.82, a, ROOF + PEAK), r = at(d + W * 0.82, b, ROOF + PEAK), s0 = at(d + W, b, ROOF), s1 = at(d + W, a, ROOF);
+    shedGlass.push(...p, ...r, ...s0, ...p, ...s0, ...s1);
+  }
+  // Les toits des boîtes : acrotère blanc, gravier brun-rouge, rangées de panneaux noirs, gaines.
+  for (const b of RTS_BOXES) {
+    const [p0, p1, , p3] = b.c, ux = p1[0] - p0[0], uz = p1[1] - p0[1], vx = p3[0] - p0[0], vz = p3[1] - p0[1];
+    const pt = (u, v, y) => [p0[0] + ux * u + vx * v, y, p0[1] + uz * u + vz * v];
+    surface(m, "#8c5c46", RENDER, (q) => q(pt(0, 0, b.top + 0.02), pt(1, 0, b.top + 0.02), pt(1, 1, b.top + 0.02), pt(0, 1, b.top + 0.02)));
+    surface(m, "#141b27", PLAIN, (q) => { for (let r = 0; r < 4; r++) q(pt(0.12, 0.14 + r * 0.19, b.top + 0.05), pt(0.88, 0.14 + r * 0.19, b.top + 0.05), pt(0.88, 0.27 + r * 0.19, b.top + 0.09), pt(0.12, 0.27 + r * 0.19, b.top + 0.09)); });
+    surface(m, "#f0f0ec", RENDER, (q) => b.c.forEach((a, i) => {
+      const c = b.c[(i + 1) % 4], t = b.top + 0.12;
+      q([a[0], b.top - 0.1, a[1]], [c[0], b.top - 0.1, c[1]], [c[0], t, c[1]], [a[0], t, a[1]]);
+    }));
+    const [cx, , cz] = pt(0.5, 0.92, 0);
+    m.paint(new THREE.BoxGeometry(0.5 * S, 0.14 * S, 0.3 * S).translate(cx * S, (b.top + 0.09) * S, cz * S), "#d9dadb", PLAIN);
+  }
+  const g = new THREE.Group();
+  const core = new THREE.Mesh(prism(offsetLine(P, -0.85), SILL, HEAD), rtsCoreMat);
+  const deck = new THREE.Mesh(prism(P, SOFFIT + 0.02, SILL), new THREE.MeshStandardMaterial({ color: "#bdbab2", roughness: 0.8 }));
+  const lid = new THREE.Mesh(prism(P, HEAD, ROOF), new THREE.MeshStandardMaterial({ color: "#aab0b4", roughness: 0.5, metalness: 0.4 }));
+  const soffit = new THREE.Mesh(prism(offsetLine(P, 0.01), SOFFIT, SOFFIT + 0.02), rtsUnderMat);
+  const ground = new THREE.Mesh(prism(offsetLine(P, -2.3), GROUND, SOFFIT), rtsGroundMat);
+  for (const o of [core, deck, lid, soffit, ground]) { o.material.side = THREE.DoubleSide; o.castShadow = o.receiveShadow = true; }
+  const ribbon = [];
+  P.forEach((a, i) => { const b = P[(i + 1) % P.length]; ribbon.push(a[0], SILL, a[1], b[0], SILL, b[1], b[0], HEAD, b[1], a[0], SILL, a[1], b[0], HEAD, b[1], a[0], HEAD, a[1]); });
+  const rib = glassSkin(ribbon, rtsRibbonMat);
+  rib.renderOrder = 3;
+  g.add(core, deck, lid, soffit, ground, bodyOf(m), glassSkin(shedGlass, rtsShedGlassMat), glassSkin(rezGlass, rtsRezMat), rib);
+  return g;
+}
+// ArtLab (Kengo Kuma, 2016) : le long toit d'ardoise déborde sur une sous-face de bois clair semée de
+// spots, bordée de noir ; au nord il se replie jusqu'au sol en un grand portail triangulaire.
+function artlab() {
+  const m = new Module(true), wood = new Module(true), S = 1 / M;
+  const WX = -33.85, EAVE = 1.98, OUT = -34.55, OUTY = 2.2, Z0 = -11.8, Z1 = 24.2;
+  // Le débord ouest, sa rive noire.
+  surface(wood, "#ffffff", PLAIN, (q) => q([WX, EAVE, Z0], [WX, EAVE, Z1], [OUT, OUTY, Z1], [OUT, OUTY, Z0]));
+  surface(m, "#1a1b1d", PLAIN, (q) => { q([OUT, OUTY, Z0], [OUT, OUTY, Z1], [OUT, OUTY + 0.09, Z1], [OUT, OUTY + 0.09, Z0]); q([OUT, OUTY + 0.09, Z0], [OUT, OUTY + 0.09, Z1], [WX, EAVE + 0.1, Z1], [WX, EAVE + 0.1, Z0]); });
+  // Le portail : le toit continue, puis se replie vers le sol, plus bas à l'est.
+  const A = [-34.7, 2.52, 24.2], B = [-31.2, 2.62, 24.2], A2 = [-34.7, 2.52, 26.9], B2 = [-31.2, 2.62, 26.9], G2 = [-31.0, 0.55, 28.1];
+  const lift = (p, d) => [p[0], p[1] + d, p[2]];
+  // Le repli ne ferme pas le portail : un triangle, du bord ouest du toit jusqu'au sol à l'est.
+  surface(wood, "#ffffff", PLAIN, (q) => { q(B, A, A2, B2); q(B2, A2, G2, G2); });
+  surface(m, "#16171a", PLAIN, (q) => { q(lift(A, 0.1), lift(B, 0.1), lift(B2, 0.1), lift(A2, 0.1)); q(lift(A2, 0.1), lift(B2, 0.1), [G2[0], G2[1], G2[2] + 0.1], [G2[0], G2[1], G2[2] + 0.1]); });
+  surface(m, "#16171a", PLAIN, (q) => { for (const [p, r] of [[A, A2], [A2, G2], [B, B2], [B2, G2]]) q(p, r, lift(r, 0.1), lift(p, 0.1)); });
+  // Les spots sous le débord.
+  const spots = [];
+  for (let z = Z0 + 0.4; z < Z1; z += 0.62) spots.push(new THREE.Matrix4().makeTranslation((WX + OUT) / 2, (EAVE + OUTY) / 2 - 0.03, z));
+  for (let t = 0.15; t < 1; t += 0.2) spots.push(new THREE.Matrix4().makeTranslation(-33, 2.52 - 0.03, 24.4 + t * 2.4));
+  const lamps = new THREE.InstancedMesh(new THREE.BoxGeometry(0.05, 0.012, 0.05), lampMat, spots.length);
+  spots.forEach((p, i) => lamps.setMatrixAt(i, p));
+  const wg = mergeGeometries(wood.body); wg.scale(M, M, M);
+  const soffit = new THREE.Mesh(wg, artWoodMat); soffit.castShadow = soffit.receiveShadow = true;
+  const g = new THREE.Group();
+  g.add(bodyOf(m), soffit, lamps);
+  return g;
+}
+const artWoodMat = new THREE.MeshStandardMaterial({ color: "#d4a463", roughness: 0.6, emissive: "#ffb85c", emissiveIntensity: 0, side: THREE.DoubleSide });
+// L'enseigne de la tour RTS, sur l'angle de sa plus haute boîte.
+function rtsSign() {
+  const paint = document.createElement("canvas"); paint.width = 512; paint.height = 192;
+  const b = paint.getContext("2d");
+  b.fillStyle = "#c8102e"; b.fillRect(0, 0, 512, 192);
+  b.fillStyle = "#fff"; b.textAlign = "center"; b.textBaseline = "middle";
+  b.font = "700 58px Archivo, Helvetica, Arial, sans-serif"; b.fillText("SRG SSR", 165, 98);
+  b.fillStyle = "#fff"; b.fillRect(326, 0, 8, 192);
+  b.font = "800 92px Archivo, Helvetica, Arial, sans-serif"; b.fillText("RTS", 424, 100);
+  const tex = new THREE.CanvasTexture(paint);
+  tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
+  tex.wrapS = THREE.RepeatWrapping; tex.repeat.x = -1;  // le campus est retourné : l'enseigne se relit
+  const mat = new THREE.MeshStandardMaterial({ map: tex, emissive: "#ffffff", emissiveMap: tex, emissiveIntensity: 0, roughness: 0.5, side: THREE.DoubleSide });
+  signMat = mat;
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.15, 0.43), mat);
+  const nx = 0.4, nz = 0.92;
+  sign.position.set(30.6 + nx * 0.03, 5.86, -3.4 + nz * 0.03);   // sur l'angle, comme sur les photos
+  sign.rotation.y = Math.atan2(nx, nz);
+  const back = new THREE.Mesh(sign.geometry, new THREE.MeshStandardMaterial({ color: "#c8102e", roughness: 0.5, side: THREE.DoubleSide }));
+  back.position.z = -0.012;                            // de dos : du rouge, pas un texte à l'envers
+  sign.add(back);
+  return sign;
+}
 
 // La matière, sans image.
 const facadeMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.62, metalness: 0.12 });
 facadeMat.onBeforeCompile = (shader) => {
+  shader.uniforms.uPx = pxPerUnit;
+  shader.uniforms.uAo = aoMap;
   shader.vertexShader = shader.vertexShader
-    .replace("#include <common>", "#include <common>\nattribute float aKind;\nvarying float vKind;\nvarying vec3 vM;\nvarying float vCell;")
+    .replace("#include <common>", "#include <common>\nattribute float aKind;\nattribute vec3 aBar;\nuniform float uPx;\nvarying float vKind;\nvarying vec3 vM;\nvarying float vCell;\nvarying vec3 vSite;")
+    .replace("#include <project_vertex>", `#include <project_vertex>${AO_SITE}`)
     .replace("#include <begin_vertex>", `#include <begin_vertex>
       vKind = aKind; vM = position * ${UNIT.toFixed(1)};
-      vCell = float(gl_InstanceID);`);
+      vCell = float(gl_InstanceID);
+      #ifdef USE_INSTANCING
+      if (aBar.y > 0.0) {
+        float seen = uPx / distance((modelMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz, cameraPosition) / ${UNIT.toFixed(1)};
+        float keep = smoothstep(${BAR_PX[0].toFixed(2)}, ${BAR_PX[1].toFixed(2)}, seen * aBar.y);
+        float mid = aBar.x / ${UNIT.toFixed(1)};
+        if (aBar.z < 0.5) transformed.x = mix(mid, transformed.x, keep); else transformed.y = mix(mid, transformed.y, keep);
+      }
+      #endif`);
   shader.fragmentShader = shader.fragmentShader
     .replace("#include <common>", `#include <common>
-      varying float vKind; varying vec3 vM; varying float vCell;
+      varying float vKind; varying vec3 vM; varying float vCell; varying vec3 vSite;
+      ${AO_GLSL}
       float fh(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
       float fn(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
         return mix(mix(fh(i), fh(i + vec2(1, 0)), f.x), mix(fh(i + vec2(0, 1)), fh(i + vec2(1, 1)), f.x), f.y); }
       float gHeight = 0.0; float gRough = -1.0; float gMetal = -1.0;`)
     .replace("#include <color_fragment>", `#include <color_fragment>
       float k = floor(vKind + 0.5);
+      gAo = aoAt(vSite.xz, vSite.y);
       vec2 q = vM.xy;
       float px = max(fwidth(q.x), fwidth(q.y));
       float wash = 0.93 + 0.12 * fn(q * 0.5 + vCell * 0.37);
@@ -731,13 +1560,16 @@ facadeMat.onBeforeCompile = (shader) => {
         float det = dot(sx, r1) * faceDirection;
         vec3 grad = sign(det) * (dFdx(gHeight) * ${(1 / UNIT).toFixed(4)} * r1 + dFdy(gHeight) * ${(1 / UNIT).toFixed(4)} * r2) * 6.0;
         normal = normalize(abs(det) * normal - grad);
-      }`);
+      }`)
+    .replace("#include <opaque_fragment>", AO_APPLY);
 };
 const glassMat = new THREE.MeshStandardMaterial({ color: "#3c4a55", roughness: 0.07, metalness: 0.82, side: THREE.DoubleSide });
 glassMat.onBeforeCompile = (shader) => {
   shader.uniforms.uNight = night;
+  shader.uniforms.uAo = aoMap;
   shader.vertexShader = shader.vertexShader
-    .replace("#include <common>", "#include <common>\nvarying float vId;\nvarying vec2 vPane;")
+    .replace("#include <common>", "#include <common>\nvarying float vId;\nvarying vec2 vPane;\nvarying vec3 vSite;")
+    .replace("#include <project_vertex>", `#include <project_vertex>${AO_SITE}`)
     .replace("#include <begin_vertex>", `#include <begin_vertex>
       vId = float(gl_InstanceID);
       vPane = position.xy * ${UNIT.toFixed(1)};
@@ -745,7 +1577,10 @@ glassMat.onBeforeCompile = (shader) => {
       vNormal = normalize(vNormal + normalMatrix * vec3((vec2(fract(sin(vId * 12.99) * 437.5), fract(sin(vId * 78.23) * 437.5)) - 0.5) * 0.05, 0.0));`);
   shader.fragmentShader = shader.fragmentShader
     .replace("#include <common>", `#include <common>
-      uniform float uNight; varying float vId; varying vec2 vPane;
+      uniform float uNight; varying float vId; varying vec2 vPane; varying vec3 vSite;
+      ${AO_GLSL}
+      #define FADE_A 0.12
+      #define FADE_B 0.5
       float gh(vec2 p) { return fract(sin(dot(p, vec2(41.3, 289.1))) * 43758.5453); }`)
     .replace("#include <emissivemap_fragment>", `#include <emissivemap_fragment>
       // La nuit, fenêtre par fenêtre : un bureau sur quatre allumé, chacun à sa lumière, plus claire
@@ -757,9 +1592,26 @@ glassMat.onBeforeCompile = (shader) => {
       float h = fract(vPane.y / 3.6);
       float blind = step(0.6, gh(room + 11.0)) * smoothstep(0.42, 0.46, h);
       float falloff = (0.45 + 0.55 * h) * (1.0 - 0.75 * blind);
-      totalEmissiveRadiance += lamp * on * level * falloff * uNight;
-      diffuseColor.rgb *= 0.8 + 0.5 * fract(sin(vId * 33.1) * 437.5);`);
+      // Une fenêtre de quelques pixels clignote derrière ses montants : de loin ou de biais, chaque
+      // pièce se fond dans la lueur moyenne de la façade.
+      float px = max(fwidth(vPane.x), fwidth(vPane.y));
+      float glow = mix(on * level * falloff, 0.05, smoothstep(FADE_A, FADE_B, px));
+      totalEmissiveRadiance += lamp * glow * uNight;
+      // De nuit le verre garde le ciel : un bleu sourd, jamais un trou noir.
+      totalEmissiveRadiance += diffuseColor.rgb * vec3(0.3, 0.42, 0.62) * 0.2 * uNight;
+      gAo = aoAt(vSite.xz, vSite.y) * 0.82;             // le verre est en retrait dans son cadre
+      diffuseColor.rgb *= 0.8 + 0.5 * fract(sin(vId * 33.1) * 437.5);`)
+    .replace("#include <opaque_fragment>", AO_APPLY);
 };
+
+// Le verre de la RTS : clair, bleuté, il renvoie le ciel.
+const rtsGlassMat = glassMat.clone();
+rtsGlassMat.color.set("#8fb0cc");
+rtsGlassMat.metalness = 0.7;
+rtsGlassMat.onBeforeCompile = glassMat.onBeforeCompile;
+
+// Le verre d'ArtLab : la nuit, une seule lueur chaude le long du bâtiment, derrière ses piles sombres.
+const artGlassMat = new THREE.MeshStandardMaterial({ color: "#59666e", roughness: 0.08, metalness: 0.75, emissive: "#ffb46e", emissiveIntensity: 0 });
 
 // Le verre du Rolex : un reflet, et derrière lui l'intérieur (plafond à bandes lumineuses, sol), tracé
 // dans le shader à partir du regard. Rien à modéliser, mais la perspective est juste.
@@ -791,7 +1643,7 @@ const facadeGroup = new THREE.Group();
 facadeGroup.visible = false;
 const rolexParts = new THREE.Group();
 const facadesReady = groundGate.then(() => Promise.all([loadBin(`${SET}walls.bin`, Float32Array), loadBin("geo/rolex.bin", Float32Array), loadBin("geo/canopies.bin", Float32Array)])).then(async ([a, rolex, roofs]) => {
-  const HI = small ? 0 : 44, LO = small ? 95 : 135;
+  const HI = small ? 0 : 30, LO = small ? 95 : 125;
   const place = new THREE.Matrix4(), scaleM = new THREE.Matrix4(), turn = new THREE.Matrix4();
   const lists = new Map();                            // clé → { kit, matrices, colors }
   const push = (key, kit, m, color) => {
@@ -801,17 +1653,17 @@ const facadesReady = groundGate.then(() => Promise.all([loadBin(`${SET}walls.bin
   };
   const kits = {
     aluHi: aluminium(true), aluLo: aluminium(false), tile: ceramic(), bmA: panelled(true), bmB: panelled(false), rts: rtsBox(),
-    top: redTop(), mx: mxBay(), plain: plainWall(), post: steelPost(), swiss: curtain(1.8, 3.6, "#0a0c0f", 0.09), bc: darkMetal(), wood: timber(), slab: rtsSlab(), shutter: shutter(), rib: ribbed(), mull: mullion(),
+    top: redTop(), mx: mxBay(), plain: plainWall(), post: steelPost(), swiss: curtain(1.8, 3.6, "#0a0c0f", 0.09), bc: darkMetal(), bcSide: bcSide(), bcFront: bcFront(), wood: timber(), qnA: qnBay(0), qnB: qnBay(1), qnC: qnBay(2), qnL: qnLoggia(), medc: curtain(1.15, 3.7, "#8e969b", 0.05), slab: rtsSlab(), shutter: shutter(), rib: ribbed(), mull: mullion(),
   };
-  const size = { top: [7.2, 3.75], mx: [3.6, 3.6], aluHi: [7.2, 3.75], aluLo: [7.2, 3.75], tile: [3.6, 3.6], bmA: [6, 3.3], rts: [6, 3.7], swiss: [1.8, 3.6], bc: [3.6, 3.7], wood: [1.2, 3], slab: [2.4, 6] };
-  const BI = ["#d98a12", "#2a2c30", "#c9241a", "#2a2c30", "#e0b21a", "#14613a", "#2a2c30", "#14306f"];
+  const size = { top: [7.2, 3.75], mx: [3.6, 3.6], aluHi: [7.2, 3.75], aluLo: [7.2, 3.75], tile: [3.6, 3.6], bmA: [6, 3.3], rts: [6, 3.7], swiss: [1.8, 3.6], bc: [3.6, 3.7], bcSide: [1.6, 3.7], bcFront: [2.4, 3.7], wood: [0.95, 3], qnA: [2.4, 3.05], qnB: [2.4, 3.05], qnC: [2.4, 3.05], qnL: [2.4, 3.05], medc: [1.15, 3.7], slab: [2.4, 6] };
+  const BI = ["#efa915", "#1a2126", "#e66f12", "#1a2126", "#cf2419", "#1a2126", "#1d5fb0", "#1a2126", "#148a44", "#1a2126", "#f2c812", "#1a2126"];
   let seedF = 11;
   const rnd = () => ((seedF = (seedF * 16807) % 2147483647) / 2147483647);
   for (let i = 0; i < a.length; i += 10) {
     const [x0, z0, x1, z1, y0, y1, nx, nz, s, lift] = a.subarray(i, i + 10);
-    if (s === 0) continue;
+    if (s === 0 && !inQN((x0 + x1) / 2, (z0 + z1) / 2)) continue;
     const mx = (x0 + x1) / 2, mz = (z0 + z1) / 2, dist = Math.hypot(mx, mz);
-    if (dist > LO) continue;
+    if (dist > LO || (y1 < 3.3 && inCrossing(mx, mz)) || inOdyssea(mx, mz) || inDome(mx, mz) || inRedBox(mx, mz) || (inHall(mx, mz) && y1 > 1.7)) continue;
     // Le repère du mur : x le long, y vers le haut, z vers l'extérieur.
     let tx = nz, tz = -nx;
     const flip = (x1 - x0) * tx + (z1 - z0) * tz < 0;
@@ -833,6 +1685,16 @@ const facadesReady = groundGate.then(() => Promise.all([loadBin(`${SET}walls.bin
     };
     const cell = `${Math.floor(mx / 45)},${Math.floor(mz / 45)}`;
     const tintOf = s === 14 ? 0xfff0d2 : 0xffffff;
+    if (inQN(mx, mz)) {
+      if (tall < 0.4 || len < 0.4) continue;
+      const court = Math.hypot(mx - QN_COURT[0], mz - QN_COURT[1]) < 4.2;
+      const LOG = [0xe9b521, 0xe07a2a, 0x3f78b5, 0x7fae4a, 0xd9d4c8, 0xe9b521];
+      if (court) {
+        const [w, h] = size.qnL, nx_ = Math.max(1, Math.round(len / (w * M))), ny = Math.max(1, Math.round(tall / (h * M)));
+        for (let r = 0; r < ny; r++) for (let c = 0; c < nx_; c++) push(`qnL:${cell}`, kits.qnL, frame(c * len / nx_, y0 + r * tall / ny, len / nx_ / (w * M), tall / ny / (h * M)), LOG[(r * 3 + c * 5 + Math.abs(Math.floor(sx))) % LOG.length]);
+      } else grid("qnA", (r, c) => { const k = (r * 7 + c * 3 + (c >> 1)) % 5; return (k < 2 ? "qnA" : k < 4 ? "qnB" : "qnC") + `:${cell}`; });
+      continue;
+    }
     if (s === 1) {
       continue;   // ses montants viennent de geo/mullions.bin
     } else if (s === 2 || s === 12 || s === 14) {
@@ -851,36 +1713,43 @@ const facadesReady = groundGate.then(() => Promise.all([loadBin(`${SET}walls.bin
     } else if (s === 6) {
       grid("bmA", (r, c) => ((r * 5 + c * 3) % 7 < 3 ? `bmB:${cell}` : `bmA:${cell}`));
     } else if (s === 9) {
+      if (tall < 0.7) continue;                        // les retombées des sheds : pas des étages
       grid("rts", () => `rts:${cell}`);
     } else if (s === 7) {
       grid("swiss", () => `swiss:${cell}`);
-    } else if (s === 8 || s === 15) {
+    } else if (s === 8) {
+      if (len < 8) grid("bcFront", () => `bcFront:${cell}`);   // les pignons sont vitrés, les longs côtés percés
+      else grid("bcSide", () => `bcSide:${cell}`);
+    } else if (s === 15) {
       grid("bc", () => `bc:${cell}`);
     } else if (s === 11) {
       grid("wood", () => `wood:${cell}`);
     } else if (s === 10) {
-      if (tall < 0.7) continue;                        // les sheds : leur verre vient du maillage
-      grid("slab", () => `slab:${cell}`);
+      continue;                                        // l'anneau est construit à part (rtsRing)
     } else if (s === 4) {
       // ME D : des volets indépendants, chacun penché à sa façon, à distance du mur ; un sur quatre
       // manque et laisse voir le verre.
-      const bay = 2.3 * M, floor = 3.7 * M;
+      // D'après les photos : des volets étroits à lames, penchés deux à deux en V, le verre éclairé derrière.
+      grid("medc", () => `medc:${cell}`);
+      const bay = 1.15 * M, floor = 3.7 * M;
       const nX = Math.max(1, Math.round(len / bay)), nY = Math.max(1, Math.round(tall / floor));
       const w = len / nX, h = tall / nY;
       for (let r = 0; r < nY; r++) for (let c = 0; c < nX; c++) {
-        if (rnd() < 0.24) continue;
-        const lean = (rnd() - 0.5) * 0.3;
-        const m4b = frame((c + 0.5) * w, y0 + (r + 0.5) * h, w * 0.92 * UNIT, h * 0.96 * UNIT, 1, lean);
+        if (rnd() < 0.1) continue;
+        const lean = ((c + r) % 2 ? 1 : -1) * (0.07 + rnd() * 0.07);
+        const m4b = frame((c + 0.5) * w, y0 + (r + 0.5) * h, w * 0.62 * UNIT, h * 0.97 * UNIT, 1, lean);
         m4b.multiply(turn.makeTranslation(-0.5 * M, -0.5 * M, 0.34 * M));
         push(`shutter:${cell}`, kits.shutter, m4b, 0xffffff);
       }
     } else if (s === 5) {
       // BI : un socle noir nervuré, puis de larges bandes de couleur.
-      const bay = 2.4 * M, nX = Math.max(1, Math.round(len / bay)), w = len / nX;
+      const bay = 1.8 * M, nX = Math.max(1, Math.round(len / bay)), w = len / nX;
       const base = Math.min(tall, 3.7 * M);
       for (let c = 0; c < nX; c++) {
         push(`rib:${cell}`, kits.rib, frame(c * w, y0, w * UNIT, base * UNIT, 1), 0x202225);
-        if (tall > base) push(`rib:${cell}`, kits.rib, frame(c * w, y0 + base, w * 0.985 * UNIT, (tall - base) * UNIT, 1.6), new THREE.Color(BI[(c + Math.floor(sx * 3)) & 7]).getHex());
+        // Au-dessus : de larges bandes pleines, une sur deux en verre sombre, un peu en retrait.
+        const tone = BI[(c + Math.abs(Math.floor(sx * 3)) * 2) % BI.length];
+        if (tall > base) push(`plain:${cell}`, kits.plain, frame(c * w, y0 + base, w * UNIT, (tall - base) * UNIT, tone === "#1a2126" ? 0.6 : 1.6), new THREE.Color(tone).getHex());
       }
     }
   }
@@ -954,6 +1823,7 @@ const facadesReady = groundGate.then(() => Promise.all([loadBin(`${SET}walls.bin
   skinGeo.setAttribute("normal", new THREE.BufferAttribute(new Float32Array(skin.normal), 3));
   skinGeo.setAttribute("color", new THREE.BufferAttribute(new Float32Array(skin.color), 3));
   skinGeo.setAttribute("aKind", new THREE.BufferAttribute(new Float32Array(skin.body.length / 3), 1));
+  skinGeo.setAttribute("aBar", new THREE.BufferAttribute(new Float32Array(skin.body.length), 3));
   const skinMat = facadeMat.clone();
   skinMat.onBeforeCompile = facadeMat.onBeforeCompile;
   skinMat.side = THREE.DoubleSide;
@@ -972,6 +1842,7 @@ const facadesReady = groundGate.then(() => Promise.all([loadBin(`${SET}walls.bin
   const rolexFloor = new THREE.Mesh(floorGeo, new THREE.MeshStandardMaterial({ color: "#7d7a72", roughness: 0.9, side: THREE.DoubleSide }));
   rolexFloor.castShadow = rolexFloor.receiveShadow = true;
   rolexParts.add(rolexSkin, rolexGlass, rolexFloor);
+  facadeGroup.add(crossing(), agora(), artlab(), medCanopy(), rtsSign(), rtsRing(), odyssea(), swissTech(), polydome(), bcRoof());
   const tint = new THREE.Color();
   let triangles = 0;
   for (const { kit, matrices, colors } of lists.values()) {
@@ -981,15 +1852,16 @@ const facadesReady = groundGate.then(() => Promise.all([loadBin(`${SET}walls.bin
       const mesh = new THREE.InstancedMesh(geo, mat, n);
       matrices.forEach((m, k) => mesh.setMatrixAt(k, m));
       if (mat === facadeMat) colors.forEach((c, k) => mesh.setColorAt(k, tint.set(c)));
-      mesh.castShadow = cast && !small; mesh.receiveShadow = !small;
+      mesh.castShadow = cast && !small; mesh.receiveShadow = !small && mat === facadeMat;   // le verre n'en a pas besoin
       mesh.computeBoundingSphere();
       facadeGroup.add(mesh);
       triangles += n * geo.attributes.position.count / 3;
     };
     add(kit.body, facadeMat, true);
-    add(kit.glass, glassMat, false);
+    add(kit.glass, kit === kits.rts || kit === kits.slab ? rtsGlassMat : kit === kits.wood ? artGlassMat : kit === kits.medc ? medGlassMat : kit.lit ? qnGlassMat : glassMat, false);
   }
   facadeGroup.visible = true;
+  signMat.emissiveIntensity = night.value;
   await warm(facadeGroup);
   await warm(rolexParts);
   facadeGroup.visible = campus.scale.y >= 0.999;
@@ -1162,14 +2034,32 @@ function applyTheme() {
   scene.background = new THREE.CanvasTexture(skyPaint);
   scene.background.colorSpace = THREE.SRGBColorSpace;
   plainMat.color.set(dark ? "#10161c" : "#93a7b0");
+  hazeTone.value.set(dark ? "#0f1520" : "#9db4c4");
   night.value = dark ? 1 : 0;
   wallTone.value.set(dark ? "#8a8d92" : "#e7e3da");
   roofTone.value.set(dark ? "#8f9298" : "#c4bcb6");
-  water.value.set(dark ? "#16222f" : "#4f6f84");
+  water.value.set(dark ? "#1d2d40" : "#4f6f84");
   sun.color.set(dark ? "#8fa8d0" : "#fff3e2");
   sun.intensity = dark ? 1.6 : 3.8;
   hemi.intensity = dark ? 1.1 : 0.55;
   key.intensity = dark ? 1.0 : 1.4;
+  lampMat.emissiveIntensity = dark ? 2.2 : 0;
+  beaconMat.emissiveIntensity = dark ? 4 : 0.6;
+  odyRoomMat.emissiveIntensity = dark ? 0.32 : 0;
+  hallGlassMat.emissiveIntensity = dark ? 0.09 : 0;
+  medGlassMat.emissiveIntensity = dark ? 0.85 : 0;
+  qnGlassMat.emissiveIntensity = dark ? 0.12 : 0;
+  stccGlassMat.emissiveIntensity = dark ? 0.22 : 0;
+  stccUnderMat.emissiveIntensity = dark ? 0.035 : 0.05;
+  artGlassMat.emissiveIntensity = dark ? 0.16 : 0;
+  artWoodMat.emissiveIntensity = dark ? 0.2 : 0;
+  rtsCoreMat.emissiveIntensity = dark ? 1.15 : 0;
+  rtsRibbonMat.opacity = dark ? 0.22 : 0.46;
+  rtsRezMat.emissiveIntensity = dark ? 0.55 : 0;
+  rtsUnderMat.emissiveIntensity = dark ? 0.32 : 0;
+  rtsGroundMat.emissiveIntensity = dark ? 0.12 : 0;
+  rtsShedGlassMat.emissiveIntensity = dark ? 0.14 : 0;
+  if (signMat) signMat.emissiveIntensity = dark ? 1 : 0;
   shadowsDirty();
 }
 
@@ -1178,21 +2068,29 @@ function applyTheme() {
 // ==========================================================================================
 const D = (x, y, d, ry, rx, screen, on = 1) => ({ x, y, d, ry, rx, screen, on });
 const OFF_PHONE = D(0.45, -1.6, 5.4, -0.3, 0.2, null, 0);
+// Une section, un lieu : le parcours fait visiter le campus en même temps que l'app. orbit : le tour
+// lent (degrés) que fait la caméra autour du lieu pendant la lecture.
 const STOPS = {
-  hero: { pos: [-20, 6.5, 21], look: [6, 10.8, -14], shift: 0.1, phone: D(0.66, -0.1, 5.8, -0.5, 0.06, "iphone-today") },
-  today: { pos: [-30, 9, 26], look: [4, 2, 0], shift: -0.14, phone: OFF_PHONE },
-  import: { pos: [-37, 8, -15], look: [2, 2, 0], shift: 0.14, phone: OFF_PHONE },
-  etude: { pos: [-27, 5, 15], look: [6, 2.4, 0], shift: -0.14, phone: OFF_PHONE },
-  hours: { pos: [-20, 30, 34], look: [2, 0, -6], shift: 0.14, phone: OFF_PHONE },
-  groups: { pos: [30, 9, -24], look: [2, 2, 0], shift: -0.14, phone: OFF_PHONE },
-  everywhere: { pos: [-26, 13, -30], look: [4, 3, 2], shift: 0.14, phone: D(-0.62, -0.08, 5.6, 0.48, 0.06, "iphone-today") },
-  plan: { pos: [0.01, 58, 9], look: [2.6, 0, -1], shift: 0, phone: OFF_PHONE },
+  hero: { pos: [-40, 17, 46], look: [8, 3, -8], orbit: 10, shift: 0.1, phone: D(0.66, -0.1, 5.8, -0.5, 0.06, "iphone-today") },
+  today: { pos: [3, 5.5, 21], look: [1, 3.2, 40], orbit: 7, shift: -0.14, phone: OFF_PHONE },
+  import: { pos: [63, 11, 15], look: [42, 6.4, -2], orbit: 28, shift: 0.14, phone: OFF_PHONE },
+  etude: { pos: [-15, 7, -15], look: [3, 1.4, 1], orbit: 24, shift: -0.14, phone: OFF_PHONE },
+  hours: { pos: [25, 8, 13], look: [8, 2.6, 28], orbit: 22, shift: 0.14, phone: OFF_PHONE },
+  groups: { pos: [-37, 7, -7], look: [-21, 1.4, 7], orbit: 34, shift: -0.14, phone: OFF_PHONE },
+  everywhere: { pos: [42, 12, 30], look: [30, 3.4, 1], orbit: 30, shift: 0.14, phone: D(-0.62, -0.08, 5.6, 0.48, 0.06, "iphone-today") },
+  plan: { pos: [0.01, 62, 9], look: [2.6, 0, -1], orbit: 0, shift: 0, phone: OFF_PHONE },
 };
 for (const s of Object.values(STOPS)) { s.pos = flipZ(s.pos); s.look = flipZ(s.look); }
-const INSIDE = new Set(["hero"]);
+const INSIDE = new Set(["hero", "today"]);            // en portrait, ces vues ne reculent pas
 const sections = [...document.querySelectorAll("[data-cam]")];
 let centers = [];
-const measure = () => { centers = sections.map((s) => { const r = s.getBoundingClientRect(); return r.top + scrollY + r.height / 2; }); };
+// Sur téléphone les sections sont hautes : la caméra doit être arrivée quand le texte entre à l'écran.
+const measure = () => {
+  centers = sections.map((s) => {
+    const r = s.getBoundingClientRect(), panel = small && s.querySelector(".panel");
+    return panel ? panel.getBoundingClientRect().top + scrollY - innerHeight * 0.75 + innerHeight * 0.5 : r.top + scrollY + r.height / 2;
+  });
+};
 const camPos = new THREE.Vector3(...STOPS.hero.pos), camLook = new THREE.Vector3(...STOPS.hero.look);
 const wantPos = camPos.clone(), wantLook = camLook.clone();
 let shiftNow = STOPS.hero.shift, shiftWant = shiftNow, liftNow = 0, liftWant = 0;
@@ -1201,6 +2099,30 @@ const devWant = { phone: { ...STOPS.hero.phone } };
 const ease = (t) => t * t * (3 - 2 * t);
 const portrait = () => camera.aspect < 1.05;
 
+let routeFor = null, routeNow = null;
+function camRoute() {
+  const tall = portrait();
+  if (routeNow && routeFor === tall) return routeNow;
+  const names = sections.map((s) => s.dataset.cam), P = [], L = [];
+  const pose = (stop, name, turn) => {
+    const look = new THREE.Vector3(...stop.look), arm = new THREE.Vector3(...stop.pos).sub(look).applyAxisAngle(new THREE.Vector3(0, 1, 0), THREE.MathUtils.degToRad(turn));
+    if (tall && !INSIDE.has(name)) arm.multiplyScalar(1.5);
+    return arm.add(look);
+  };
+  names.forEach((name, n) => {
+    const s = STOPS[name], next = STOPS[names[n + 1]];
+    P.push(pose(s, name, -s.orbit / 2), pose(s, name, s.orbit / 2));
+    L.push(new THREE.Vector3(...s.look), new THREE.Vector3(...s.look));
+    if (next) {
+      const from = pose(s, name, s.orbit / 2), to = pose(next, names[n + 1], -next.orbit / 2), span = from.distanceTo(to);
+      P.push(from.clone().lerp(to, 0.5).setY(Math.max(from.y, to.y) + Math.min(26, span * 0.32)));
+      L.push(new THREE.Vector3(...s.look).lerp(new THREE.Vector3(...next.look), 0.5));
+    }
+  });
+  routeFor = tall;
+  routeNow = { pos: new THREE.CatmullRomCurve3(P, false, "centripetal"), look: new THREE.CatmullRomCurve3(L, false, "centripetal"), count: P.length };
+  return routeNow;
+}
 function scrollTarget() {
   if (!centers.length) measure();
   const mid = scrollY + innerHeight * 0.5;
@@ -1211,10 +2133,22 @@ function scrollTarget() {
   const A = STOPS[ia], B = STOPS[ib];
   const t = i === j ? 0 : ease(Math.min(1, Math.max(0, (mid - centers[i]) / (centers[j] - centers[i]))));
   const lerp = (a, b) => a + (b - a) * t;
-  wantPos.set(lerp(A.pos[0], B.pos[0]), lerp(A.pos[1], B.pos[1]), lerp(A.pos[2], B.pos[2]));
+  // Un seul trajet continu : pendant une section la caméra tourne lentement autour du lieu, entre deux
+  // elle prend de la hauteur et glisse vers le suivant. Trois repères par section (entrée, sortie, milieu du vol).
+  const N = sections.length, near = (n) => centers[Math.min(N - 1, Math.max(0, n))];
+  const startOf = (n) => centers[n] - 0.34 * (n ? centers[n] - near(n - 1) : innerHeight);
+  const endOf = (n) => centers[n] + 0.34 * (n < N - 1 ? near(n + 1) - centers[n] : innerHeight);
+  let key;
+  if (mid <= startOf(i) && i === 0) key = 0;
+  else if (mid <= endOf(i)) key = 3 * i + Math.min(1, Math.max(0, (mid - startOf(i)) / (endOf(i) - startOf(i))));
+  else if (i >= N - 1) key = 3 * (N - 1) + 1;
+  else { const f = Math.min(1, (mid - endOf(i)) / (startOf(i + 1) - endOf(i))); key = 3 * i + 1 + 2 * (f * 0.3 + ease(f) * 0.7); }
+  const route = camRoute();
+  const u = key / (route.count - 1);
+  route.pos.getPoint(u, wantPos);
+  route.look.getPoint(u, wantLook);
   wantLook.set(lerp(A.look[0], B.look[0]), lerp(A.look[1], B.look[1]), lerp(A.look[2], B.look[2]));
   // En portrait, reculer (sauf à l'intérieur, où l'on finirait dans le mur).
-  if (portrait() && !INSIDE.has(ia) && !INSIDE.has(ib)) wantPos.sub(wantLook).multiplyScalar(1.5).add(wantLook);
   shiftWant = portrait() ? 0 : lerp(A.shift, B.shift);
   liftWant = portrait() ? 0.2 : 0;
   const heroWeight = (ia === "hero" ? 1 - t : 0) + (ib === "hero" ? t : 0);
@@ -1222,7 +2156,7 @@ function scrollTarget() {
     const a = A.phone, b = B.phone, w = devWant.phone;
     for (const k of ["x", "y", "d", "ry", "rx", "on"]) w[k] = lerp(a[k], b[k]);
     w.screen = (t < 0.5 ? a.screen : b.screen) ?? a.screen ?? b.screen;
-    if (portrait()) Object.assign(w, { x: 0.3, y: 0.64, d: 13.5, ry: -0.36, rx: 0.08, on: heroWeight, screen: "iphone-today" });
+    if (portrait()) Object.assign(w, { x: 0.3, y: 0.64, d: 13.5, ry: -0.36, rx: 0.08, on: Math.max(0, (heroWeight - 0.75) / 0.25), screen: "iphone-today" });
   }
 }
 
@@ -1230,13 +2164,14 @@ function scrollTarget() {
 // L'intro : le Léman vu d'en haut, la rive, le campus, le bâtiment qui se lève, le tour
 // ==========================================================================================
 const INTRO = {
-  pos: [[-2600, 8000, -1740], [-6400, 3100, 1700], [-2300, 640, 760], [-260, 150, 230], [36, 22, 34], [31, 12, -42], [-52, 15, -34], [-30, 17, 26]],
-  look: [[-2600, 0, -1800], [-1800, 0, -2300], [200, 0, -480], [0, 0, -5], [0, 0.6, -2], [0, 0.8, 0], [0, 0.8, 0], [0, 0.6, -2]],
-  duration: 14,
+  // Un seul mouvement : le lac, une longue descente, puis un vol lent qui s'approche du campus.
+  pos: [[-2600, 8000, -1740], [-3000, 3400, 500], [-1050, 860, 720], [-240, 165, 250], [-78, 40, 96], [-40, 17, 46]],
+  look: [[-2600, 0, -1800], [-1400, 0, -1300], [0, 0, -100], [4, 0, -4], [8, 2, -8], [8, 3, -8]],
+  duration: small ? 8.5 : 9.5,
   beats: [
     { at: 0, coords: "46,43° N · 6,52° E", place: "Lac Léman" },
-    { at: 0.3, coords: "46,52° N · 6,57° E", place: "Ecublens" },
-    { at: 0.47, coords: "46,5184° N · 6,5681° E", place: "Rolex Learning Center" },
+    { at: 0.36, coords: "46,52° N · 6,57° E", place: "Ecublens" },
+    { at: 0.6, coords: "46,5184° N · 6,5681° E", place: "EPFL" },
   ],
 };
 const introPos = new THREE.CatmullRomCurve3(INTRO.pos.map((p) => new THREE.Vector3(...flipZ(p))), false, "centripetal");
@@ -1262,18 +2197,18 @@ function introFrame(dt) {
   intro.t = Math.min(1, intro.t + (dt * intro.speed) / INTRO.duration);
   const u = introEase(intro.t);
   const p = introPos.getPoint(u), l = introLook.getPoint(u);
-  const tail = band01(u, 0.88, 1);
+  const tail = band01(u, 0.82, 1);
   camPos.copy(p).lerp(wantPos, ease(tail));
   camLook.copy(l).lerp(wantLook, ease(tail));
-  shiftNow = shiftWant * ease(band01(u, 0.9, 1));
-  liftNow = liftWant * ease(band01(u, 0.9, 1));
-  const rise = Math.max(0.02, ease(band01(u, 0.4, 0.58)));
+  shiftNow = shiftWant * ease(band01(u, 0.82, 1));
+  liftNow = liftWant * ease(band01(u, 0.82, 1));
+  const rise = Math.max(0.02, ease(band01(u, 0.34, 0.56)));
   // Le bâtiment se lève vu de loin : les ombres ne sont recalculées qu'une fois debout.
   if (Math.abs(campus.scale.y - rise) > 1e-4) {
     campus.scale.y = rise;
     if (rise >= 0.999) { facadeGroup.visible = true; shadowHold = false; shadowsDirty(); }
   }
-  devState.phone.on = ease(band01(u, 0.93, 1)) * devWant.phone.on;
+  devState.phone.on = ease(band01(u, 0.92, 1)) * devWant.phone.on;
   const beat = INTRO.beats.reduce((acc, b, i) => (u >= b.at ? i : acc), 0);
   if (beat !== intro.beat && card) {
     const first = intro.beat === -1;
@@ -1290,6 +2225,7 @@ function introFrame(dt) {
     intro.active = false;
     root.classList.add("intro-done");
     root.classList.remove("intro");
+    startDrift();
   }
 }
 
@@ -1316,10 +2252,10 @@ function placeDevice(group, s) {
 // ==========================================================================================
 // Boucle : en mouvement, une définition réduite ; à l'arrêt, une image nette
 // ==========================================================================================
-// L'image nette à l'arrêt : avec une occlusion ambiante douce (N8AO), chargée à part pour ne
-// rien retarder ; en mouvement, un rendu simple.
-let composer = null, aoPass = null;
-// En mouvement : une image plus petite, lissée, agrandie à l'écran.
+// L'image à l'arrêt est la même que celle en mouvement, en plus fine : aucune passe qui change son
+// aspect. (Une occlusion ambiante à l'arrêt noircissait les fenêtres : à chaque pause du défilement,
+// toute l'image sautait, ce qui se voyait comme un clignotement.)
+// Le recours d'une machine lente, en mouvement : une image plus petite, lissée, agrandie à l'écran.
 // (Sur téléphone, rien de tout ça : un rendu direct, moins de pixels, pas de passes.)
 const fast = small ? null : new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 }));
 if (fast) {
@@ -1328,24 +2264,11 @@ if (fast) {
   fast.setPixelRatio(dprFast);
   fast.setSize(innerWidth, innerHeight);
 }
-if (!small) import("n8ao").then(({ N8AOPass }) => {
-  composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: dprNow < 1.5 ? 4 : 0 }));
-  composer.addPass(new RenderPass(scene, camera));
-  aoPass = new N8AOPass(scene, camera, innerWidth, innerHeight);
-  aoPass.configuration.aoRadius = 1.6;
-  aoPass.configuration.distanceFalloff = 0.6;
-  aoPass.configuration.intensity = 3.2;
-  aoPass.configuration.halfRes = true;
-  aoPass.configuration.gammaCorrection = false;
-  aoPass.setQualityMode(small ? "Low" : "Medium");
-  composer.addPass(aoPass);
-  composer.addPass(new OutputPass());
-  composer.setPixelRatio(dprNow);
-  composer.setSize(innerWidth, innerHeight);
-  wake();
-}).catch(() => {});
 const clock = new THREE.Clock();
 const introClock = new THREE.Clock(false);
+let useFast = false;
+let driftStart = 0, driftHold = 1, bank = 0;
+const startDrift = () => { if (small && !reduced && scrollY < 40) driftStart = performance.now(); };
 let visible = true, slowFrames = 0, paceMs = 16, lastFrame = 0, sharpDone = false, wantSharp = false, sharpTimer = 0;
 function approach(state, want, k) {
   let moving = false;
@@ -1367,7 +2290,8 @@ function frame() {
     moving = true;
   } else if (!intro.active) {
     if (camPos.distanceToSquared(wantPos) > 1e-6 || camLook.distanceToSquared(wantLook) > 1e-6) {
-      camPos.lerp(wantPos, k); camLook.lerp(wantLook, k); moving = true;
+      const glide = reduced ? 1 : 1 - Math.exp(-dt * 3.2);   // de l'inertie : le plan continue un instant
+      camPos.lerp(wantPos, glide); camLook.lerp(wantLook, glide); moving = true;
     }
     if (Math.abs(shiftNow - shiftWant) + Math.abs(liftNow - liftWant) > 1e-4) {
       shiftNow += (shiftWant - shiftNow) * k; liftNow += (liftWant - liftNow) * k; moving = true;
@@ -1378,14 +2302,37 @@ function frame() {
     tiltNow.x += (tilt.x - tiltNow.x) * k * 0.6; tiltNow.y += (tilt.y - tiltNow.y) * k * 0.6;
     moving = true;
   }
+  if (!moving && canRise && fineFrames > 90) {
+    canRise = false;
+    dprNow = DPR_TOP;
+    renderer.setPixelRatio(dprNow);
+    renderer.setSize(innerWidth, innerHeight, false);
+    sharpDone = false; stale = true;
+  }
+  // Sur téléphone, pas de pointeur : l'arrivée reste vivante, un lent balancement qui s'éteint seul.
+  let sway = 0;
+  if (driftStart) {
+    const p = (performance.now() - driftStart) / 22000;
+    driftHold += ((scrollY < 40 ? 1 : 0) - driftHold) * k;
+    if (p >= 1 || driftHold < 0.01) driftStart = 0;
+    else { sway = 0.1 * Math.sin(Math.PI * p) ** 2 * driftHold; moving = true; }
+  }
   // La profondeur suit la hauteur de vue : précise près du sol, sans limite vue du ciel.
   const dist = camPos.distanceTo(camLook);
-  camera.near = THREE.MathUtils.clamp(Math.min(dist, camPos.y) * 0.004, 0.03, 40);
+  camera.near = THREE.MathUtils.clamp(Math.min(dist, camPos.y) * 0.02, 0.03, 40);
   camera.far = Math.max(3000, camPos.y * 45 + dist * 4);
   camera.updateProjectionMatrix();
   camera.setViewOffset(innerWidth, innerHeight, -shiftNow * innerWidth, liftNow * innerHeight, innerWidth, innerHeight);
+  pxPerUnit.value = innerHeight * (useFast ? dprFast : dprNow) / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)));
   camera.position.copy(camPos);
+  if (sway) camera.position.sub(camLook).applyAxisAngle(camera.up, sway).add(camLook);
   camera.lookAt(camLook);
+  // Dans les virages, la caméra s'incline un peu, comme un drone.
+  if (!reduced && !intro.active) {
+    const side = new THREE.Vector3().subVectors(wantPos, camPos).dot(new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion));
+    bank += (THREE.MathUtils.clamp(-side * 0.012, -0.06, 0.06) - bank) * k * 0.6;
+    if (Math.abs(bank) > 2e-4) { camera.rotateZ(bank); moving = true; }
+  }
 
   if (devWant.phone.screen) showScreen(phoneScreen, devWant.phone.screen);
   if (stepScreen(phoneScreen, k)) moving = true;
@@ -1399,15 +2346,15 @@ function frame() {
     sharpDone = false; stale = false;
     clearTimeout(sharpTimer); sharpTimer = 0;
   } else if (sharpDone && !stale) return;               // rien n'a changé : on ne dessine rien
-  // Un mouvement : un rendu direct. Un arrêt qui dure : une image avec l'occlusion ambiante, jamais
-  // au milieu d'une lecture par à-coups.
-  const sharp = !moving && wantSharp && composer;
+  // Un mouvement : l'image réduite. Un arrêt qui dure : la pleine définition, jamais au milieu d'une
+  // lecture par à-coups.
+  const sharp = !moving && wantSharp;
   renderer.autoClear = true;
-  if (sharp) { composer.render(); sharpDone = true; wantSharp = false; stale = false; }
-  else if (moving && fast) fast.render();
+  if (sharp) { renderer.render(scene, camera); sharpDone = true; wantSharp = false; stale = false; }
+  else if (useFast) fast.render();                      // jusqu'à l'image nette : le même rendu lissé, pas de saut
   else {
     renderer.render(scene, camera);
-    if (small && !moving) { sharpDone = true; stale = false; }
+    if (!moving) { sharpDone = true; stale = false; }   // c'est déjà l'image définitive
   }
   if (phone.visible) {
     renderer.autoClear = false;
@@ -1420,12 +2367,15 @@ function frame() {
     lastFrame = now;
     if (gap < 200) {
       paceMs += (gap - paceMs) * 0.08;
-      if (paceMs > 24 && ++slowFrames > 30) {
+      fineFrames = paceMs < 19 ? fineFrames + 1 : 0;
+      if (paceMs > 20 && ++slowFrames > 20) {   // une machine qui peine passe vite en image réduite
         slowFrames = 0; paceMs = 16;
-        if (fast && dprFast > 0.7) {
-          dprFast = Math.max(0.7, dprFast - 0.2);
+        if (fast && (!useFast || dprFast > 0.7)) {
+          dprFast = useFast ? Math.max(0.7, dprFast - 0.2) : Math.max(0.7, Math.min(1.6, dprNow - 0.2));
+          useFast = true;
           fast.setPixelRatio(dprFast);
         } else if (!fast && dprNow > 1) {
+          canRise = false;
           dprNow = Math.max(1, dprNow - 0.25);
           renderer.setPixelRatio(dprNow);
           renderer.setSize(innerWidth, innerHeight, false);
@@ -1445,7 +2395,6 @@ function snap() {
 function resize() {
   stale = true;
   renderer.setSize(innerWidth, innerHeight, false);
-  composer?.setSize(innerWidth, innerHeight);
   fast?.setSize(innerWidth, innerHeight);
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
