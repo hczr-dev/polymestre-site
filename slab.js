@@ -544,7 +544,7 @@ const treesReady = groundGate.then(() => loadBin(`${SET}trees.bin`, Float32Array
   const tiers = [
     { within: 22, geo: crownGeometry(small ? 1 : 2, small ? LOBES.slice(0, 5) : LOBES), list: [] },
     { within: 80, geo: crownGeometry(1, LOBES.slice(0, small ? 3 : 5)), list: [] },
-    { within: Infinity, geo: crownGeometry(small ? 0 : 1, [[0, 0, 0, 0.98]]), list: [] },
+    { within: Infinity, geo: crownGeometry(0, [[0, 0, 0, 0.98]]), list: [] },   // à plus de 480 m, vingt faces suffisent
   ];
   for (let i = 0; i < n; i++) tiers.find((t) => Math.hypot(a[i * 4], a[i * 4 + 1]) < t.within).list.push(i);
   const trunks = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.03, 0.06, 1, 6), trunkMat, tiers[0].list.length + tiers[1].list.length);
@@ -671,8 +671,11 @@ function aluminium(rich) {
   // dans un cadre arrondi, le vitrage en retrait.
   const m = new Module();
   // Le fond sombre s'arrête sous la baie : 3 cm derrière le verre, il le perçait à distance.
-  m.box(0, 0, 0, 7.2, 2.04, 0.05, JOINT); m.box(0, 3.58, 0, 7.2, 3.75, 0.05, JOINT);
-  m.box(0, 2.04, 0, 0.26, 3.58, 0.05, JOINT); m.box(6.94, 2.04, 0, 7.2, 3.58, 0.05, JOINT);
+  // (De loin, ces fonds sont entièrement cachés par la tôle et le cadre : inutile de les dessiner.)
+  if (rich) {
+    m.box(0, 0, 0, 7.2, 2.04, 0.05, JOINT); m.box(0, 3.58, 0, 7.2, 3.75, 0.05, JOINT);
+    m.box(0, 2.04, 0, 0.26, 3.58, 0.05, JOINT); m.box(6.94, 2.04, 0, 7.2, 3.58, 0.05, JOINT);
+  }
   for (const [y0, y1] of [[0.02, 0.93], [0.95, 1.86]]) {
     for (const [x0, x1] of [[0.03, 4.3], [4.34, 7.17]]) {
       if (rich) {
@@ -717,7 +720,7 @@ function panelled(open) {
   m.box(0.38, 0.54, 0.1, 5.62, 0.6, 0.27, "#c8cbcb");
   const down = [open ? 0.25 : 0.9, open ? 0.72 : 0.5];
   for (const [side, x0, x1] of [[0, 0.5, 2.95], [1, 3.05, 5.5]]) {
-    for (let y = 2.5; y > 2.54 - 1.9 * down[side]; y -= 0.075) m.box(x0, y - 0.03, 0.1, x1, y + 0.03, 0.115, "#8b8f91", PLAIN, 0.5);
+    m.box(x0, 2.54 - 1.9 * down[side], 0.1, x1, 2.53, 0.115, "#8b8f91", LOUVRE);   // le store baissé, ses lames dessinées
   }
   m.pane(0.42, 0.62, 5.58, 2.62, 0.05);
   return m.done();
@@ -810,7 +813,7 @@ function mxBay() {
   const m = new Module(), PIER = "#c9c5bb", LAME = "#9fa4a6";
   m.box(0, 0, 0, 0.42, 3.6, 0.42, PIER, RENDER);
   m.box(0.42, 0, 0, 3.6, 0.14, 0.2, PIER, RENDER);
-  for (let y = 0.2; y < 1.05; y += 0.1) m.box(0.42, y, 0.05, 3.6, y + 0.07, 0.09, LAME, PLAIN, 0.5);
+  m.box(0.42, 0.2, 0.05, 3.6, 1.05, 0.09, LAME, LOUVRE);   // l'allège à lames : une tôle, ses lames dessinées
   m.box(0.42, 1.06, 0.02, 3.6, 1.14, 0.1, WHITE); m.box(0.42, 3.52, 0.02, 3.6, 3.6, 0.1, WHITE);
   for (const y of [1.9, 2.72]) m.box(0.42, y - 0.025, 0.02, 3.6, y + 0.025, 0.09, WHITE);
   for (const x of [1.48, 2.54]) m.box(x - 0.025, 1.14, 0.02, x + 0.025, 3.52, 0.09, WHITE);
@@ -1845,11 +1848,13 @@ const facadesReady = groundGate.then(() => Promise.all([loadBin(`${SET}walls.bin
   facadeGroup.add(crossing(), agora(), artlab(), medCanopy(), rtsSign(), rtsRing(), odyssea(), swissTech(), polydome(), bcRoof());
   const tint = new THREE.Color();
   let triangles = 0;
-  for (const { kit, matrices, colors } of lists.values()) {
+  for (const [key, { kit, matrices, colors }] of lists) {
+    const kitName = key.split(":")[0];
     const n = matrices.length;
     const add = (geo, mat, cast) => {
       if (!geo) return;
       const mesh = new THREE.InstancedMesh(geo, mat, n);
+      mesh.name = kitName;
       matrices.forEach((m, k) => mesh.setMatrixAt(k, m));
       if (mat === facadeMat) colors.forEach((c, k) => mesh.setColorAt(k, tint.set(c)));
       mesh.castShadow = cast && !small; mesh.receiveShadow = !small && mat === facadeMat;   // le verre n'en a pas besoin
@@ -1872,7 +1877,9 @@ const facadesReady = groundGate.then(() => Promise.all([loadBin(`${SET}walls.bin
 
 // Le lac et le relief d'abord : sur téléphone l'intro part dès qu'ils sont là, le campus arrive pendant
 // la descente.
-let nearReady = null;
+let nearReady = null, photoArrived;
+// Sur ordinateur l'intro attend aussi la photo fine : chargée en plein vol, elle figeait une image.
+const photoReady = new Promise((resolve) => { photoArrived = resolve; });
 const groundReady = (async () => {
   const meta = await (await fetch(`${SET}meta.json`)).json();
   const L = meta.layers;
@@ -1903,7 +1910,7 @@ const groundReady = (async () => {
       wake();
     }).catch(() => {});
     // Sur téléphone, la photo fine vient en dernier, une fois tout le reste arrivé.
-    if (small) Promise.allSettled([buildingsReady, treesReady, facadesReady]).then(sharpPhoto); else sharpPhoto();
+    if (small) Promise.allSettled([buildingsReady, treesReady, facadesReady]).then(sharpPhoto); else photoArrived(sharpPhoto());
   }).catch(() => {});
   shadowsDirty();
   groundArrived?.();
@@ -2206,7 +2213,7 @@ function introFrame(dt) {
   // Le bâtiment se lève vu de loin : les ombres ne sont recalculées qu'une fois debout.
   if (Math.abs(campus.scale.y - rise) > 1e-4) {
     campus.scale.y = rise;
-    if (rise >= 0.999) { facadeGroup.visible = true; shadowHold = false; shadowsDirty(); }
+    if (rise >= 0.999) { facadeGroup.visible = true; shadowHold = false; if (!preloaded) shadowsDirty(); }
   }
   devState.phone.on = ease(band01(u, 0.92, 1)) * devWant.phone.on;
   const beat = INTRO.beats.reduce((acc, b, i) => (u >= b.at ? i : acc), 0);
@@ -2368,10 +2375,10 @@ function frame() {
     if (gap < 200) {
       paceMs += (gap - paceMs) * 0.08;
       fineFrames = paceMs < 19 ? fineFrames + 1 : 0;
-      if (paceMs > 20 && ++slowFrames > 20) {   // une machine qui peine passe vite en image réduite
+      if (paceMs > 19 && ++slowFrames > 10) {   // une machine qui peine passe vite en image réduite
         slowFrames = 0; paceMs = 16;
         if (fast && (!useFast || dprFast > 0.7)) {
-          dprFast = useFast ? Math.max(0.7, dprFast - 0.2) : Math.max(0.7, Math.min(1.6, dprNow - 0.2));
+          dprFast = useFast ? Math.max(0.7, dprFast - 0.2) : Math.max(0.7, Math.min(1.25, dprNow * 0.65));
           useFast = true;
           fast.setPixelRatio(dprFast);
         } else if (!fast && dprNow > 1) {
@@ -2428,11 +2435,13 @@ if (intro.active && scrollY < 40 && !location.hash) {
   campus.scale.y = 0.02; facadeGroup.visible = false; devState.phone.on = 0;
   const giveUp = setTimeout(() => { intro.active = false; finishInstantly(); }, 10000);
   shadowHold = true;
-  const ready = small ? groundReady : groundReady.then(() => Promise.all([nearReady, treesReady.catch(() => {}), buildingsReady.catch(() => {}), facadesReady.catch(() => {})]));
+  const ready = small ? groundReady : groundReady.then(() => Promise.all([nearReady, Promise.race([photoReady, new Promise((r) => setTimeout(r, 4000))]), treesReady.catch(() => {}), buildingsReady.catch(() => {}), facadesReady.catch(() => {})]));
   ready.then(async () => {
     clearTimeout(giveUp);
     if (!intro.active) return;
     await renderer.compileAsync(scene, camera).catch(() => {});
+    if (!intro.active) return;
+    preload();
     if (!intro.active) return;
     intro.started = true;
     root.classList.remove("intro-wait");
@@ -2444,6 +2453,25 @@ if (intro.active && scrollY < 40 && !location.hash) {
   intro.active = false;
   finishInstantly();
   groundReady.then(() => wake()).catch(() => {});
+}
+// Avant l'intro, l'écran encore vide : le campus debout, tout est dessiné une fois (les ombres d'abord,
+// puis une vue d'en haut). Les géométries et les milliers de façades sont ainsi déjà dans la carte
+// graphique et les ombres calculées : quand les bâtiments se lèvent, il n'y a plus rien à préparer.
+let preloaded = false;
+function preload() {
+  const keep = campus.scale.y;
+  campus.scale.y = 1; facadeGroup.visible = true;
+  campus.updateMatrixWorld(true);
+  renderer.shadowMap.needsUpdate = true;
+  if (hiPhoto.value) renderer.initTexture(hiPhoto.value);
+  const eyeOver = new THREE.PerspectiveCamera(70, 1, 1, 2000);
+  eyeOver.position.set(0, 260, 0.01); eyeOver.lookAt(0, 0, 0); eyeOver.updateMatrixWorld();
+  renderer.render(scene, eyeOver);
+  renderer.render(scene, camera);
+  const shown = phone.visible;                         // l'iPhone aussi, sinon son écran se charge à l'arrivée
+  phone.visible = true; renderer.autoClear = false; renderer.render(deviceScene, devCam); renderer.autoClear = true; phone.visible = shown;
+  campus.scale.y = keep; facadeGroup.visible = false;
+  preloaded = true;
 }
 function finishInstantly() {
   campus.scale.y = 1; facadeGroup.visible = true;
