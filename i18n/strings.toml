@@ -27,12 +27,12 @@ fr = "./"
 en = "en.html"
 
 [page.title]
-fr = "StudyTrack — tes cours EPFL, semaine par semaine"
-en = "StudyTrack — your EPFL courses, week by week"
+fr = "Polymestre — tes cours EPFL, semaine par semaine"
+en = "Polymestre — your EPFL courses, week by week"
 
 [page.description]
-fr = "StudyTrack rassemble tes cours EPFL (Moodle, Botafogo, Ed, IS-Academia) et te dit chaque matin ce qu'il reste à faire. Mode étude, heures honnêtes, groupes. Gratuit sur iPhone, Mac et Windows."
-en = "StudyTrack gathers your EPFL courses (Moodle, Botafogo, Ed, IS-Academia) and tells you every morning what's left to do. Study mode, honest hours, groups. Free on iPhone, Mac and Windows."
+fr = "Polymestre rassemble tes cours EPFL (Moodle, Botafogo, Ed, IS-Academia) et te dit chaque matin ce qu'il reste à faire. Mode étude, heures honnêtes, groupes. Gratuit sur iPhone, Mac et Windows."
+en = "Polymestre gathers your EPFL courses (Moodle, Botafogo, Ed, IS-Academia) and tells you every morning what's left to do. Study mode, honest hours, groups. Free on iPhone, Mac and Windows."
 
 [page.og_description]
 fr = "Tes cours EPFL au même endroit, et chaque matin ce qu'il reste à faire. iPhone, Mac et Windows."
@@ -89,8 +89,8 @@ fr = "Tout le contenu de tes cours enfin réuni."
 en = "All your course material, finally in one place."
 
 [hero.lede]
-fr = "Séries, corrigés, MOOCs : StudyTrack va tout chercher pour toi."
-en = "Exercise sheets, solutions, MOOCs: StudyTrack fetches it all for you."
+fr = "Séries, corrigés, MOOCs : Polymestre va tout chercher pour toi."
+en = "Exercise sheets, solutions, MOOCs: Polymestre fetches it all for you."
 
 [hero.iphone]
 fr = "Bêta TestFlight"
@@ -185,8 +185,8 @@ en = '''The app syncs your data securely. No ads, no trackers. <a href="privacy.
 # ------------------------------------------------------------------------------------------
 
 [download.title]
-fr = "Télécharger StudyTrack"
-en = "Download StudyTrack"
+fr = "Télécharger Polymestre"
+en = "Download Polymestre"
 
 [download.iphone_ver]
 fr = "Bêta publique sur TestFlight"
@@ -214,8 +214,8 @@ fr = "Télécharger pour Mac"
 en = "Download for Mac"
 
 [download.mac_how]
-fr = "Ouvre le fichier téléchargé et glisse StudyTrack dans Applications."
-en = "Open the downloaded file and drag StudyTrack into Applications."
+fr = "Ouvre le fichier téléchargé et glisse Polymestre dans Applications."
+en = "Open the downloaded file and drag Polymestre into Applications."
 
 [download.win_ver]
 fr = "Windows 10 et 11, 64 bits"
@@ -244,8 +244,8 @@ en = '''Something wrong? Write to us from the app (Settings then “Report a pro
 # ------------------------------------------------------------------------------------------
 
 [footer.affiliation]
-fr = "StudyTrack n'est pas affilié à l'EPFL."
-en = "StudyTrack is not affiliated with EPFL."
+fr = "Polymestre n'est pas affilié à l'EPFL."
+en = "Polymestre is not affiliated with EPFL."
 
 [footer.privacy]
 fr = "Confidentialité"
