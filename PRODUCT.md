@@ -8,7 +8,7 @@ web
 
 ## Stack
 
-delegated: plain static HTML/CSS/JS on GitHub Pages (studytrack.hczr.ch, `CNAME`), no build step; Three.js loaded as an ES module from a CDN for the 3D scene. Chosen because the site is a handful of pages, deploys by pushing `main`, and the Mac app reads `mac/latest.json` from the same host, which must keep working.
+delegated: plain static HTML/CSS/JS on GitHub Pages (polymestre.ch, `CNAME`), no build step; Three.js loaded as an ES module from a CDN for the 3D scene. Chosen because the site is a handful of pages, deploys by pushing `main`, and the Mac app reads `mac/latest.json` from the same host, which must keep working.
 
 ## Users
 
