@@ -109,21 +109,25 @@ main, .top, .foot { position: relative; z-index: 1; }
 .fine { margin: 18px 0 0; font-size: 13px; color: var(--ink-3); }
 
 /* Les travées : le texte à même la scène, sur une ombre qui s'efface ; l'app dans son appareil. */
+/* Le texte et l'app tiennent dans une colonne : le reste de l'écran est au campus, où la caméra cadre
+   le lieu de la section. */
 .bay {
   position: relative; isolation: isolate;
-  min-height: 118svh; display: grid; grid-template-columns: minmax(0, 32rem) minmax(0, 1fr);
-  align-items: center; gap: clamp(24px, 5vw, 80px); padding: 12svh var(--gutter);
+  min-height: 130svh; display: grid; grid-template-columns: minmax(0, 30rem) minmax(0, 1fr);
+  align-content: center; column-gap: clamp(24px, 5vw, 80px); row-gap: 34px; padding: 16svh var(--gutter);
 }
 .bay::before {
-  content: ""; position: absolute; inset: 0 30% 0 0; z-index: -1;
-  background: radial-gradient(ellipse 88% 46% at 0% 50%, rgba(9, 11, 15, 0.84), rgba(9, 11, 15, 0.6) 55%, transparent);
+  content: ""; position: absolute; inset: 0 52% 0 0; z-index: -1;
+  background: linear-gradient(90deg, rgba(9, 11, 15, 0.8), rgba(9, 11, 15, 0.58) 62%, transparent);
 }
-.bay.right { grid-template-columns: minmax(0, 1fr) minmax(0, 32rem); }
-.bay.right::before { inset: 0 0 0 30%; background: radial-gradient(ellipse 88% 46% at 100% 50%, rgba(9, 11, 15, 0.84), rgba(9, 11, 15, 0.6) 55%, transparent); }
-.bay.right .panel { grid-column: 2; }
-.bay.right figure { grid-column: 1; grid-row: 1; }
-.bay.wide { grid-template-columns: minmax(0, 25rem) minmax(0, 1fr); }
-.bay.right.wide { grid-template-columns: minmax(0, 1fr) minmax(0, 25rem); }
+.bay .panel, .bay figure { grid-column: 1; }
+.bay figure { justify-self: start; }
+.bay.right { grid-template-columns: minmax(0, 1fr) minmax(0, 30rem); }
+.bay.right::before { inset: 0 0 0 52%; background: linear-gradient(270deg, rgba(9, 11, 15, 0.8), rgba(9, 11, 15, 0.58) 62%, transparent); }
+.bay.right .panel, .bay.right figure { grid-column: 2; }
+.bay.right figure { justify-self: end; }
+.bay .iphone { --w: min(100%, 36svh, 250px); }
+.bay .mac, .bay .win { width: min(100%, 30rem); }
 .panel { color: #fff; }
 .panel h2 { font-size: clamp(2.1rem, 3.7vw, 3.4rem); line-height: 1; font-stretch: 108%; letter-spacing: -0.032em; margin-bottom: 18px; }
 .panel p { margin: 0; color: rgba(255, 255, 255, 0.86); font-size: 19px; line-height: 1.55; max-width: 28em; }
@@ -207,7 +211,9 @@ figure { margin: 0; }
   .bay, .bay.right, .bay.wide, .bay.right.wide { grid-template-columns: minmax(0, 1fr); min-height: auto; padding: 20svh var(--gutter) 16svh; gap: 32px; }
   .bay::before, .bay.right::before { inset: 0; background: linear-gradient(180deg, transparent, rgba(9, 11, 15, 0.62) 16%, rgba(9, 11, 15, 0.62) 84%, transparent); }
   .bay.right .panel, .bay.right figure { grid-column: 1; grid-row: auto; }
-  .iphone { --w: min(78vw, 340px); }
+  .iphone, .bay .iphone { --w: min(78vw, 340px); }
+  .bay figure, .bay.right figure { justify-self: center; }
+  .bay .mac, .bay .win { width: 100%; }
   .columns { grid-template-columns: minmax(0, 1fr); border-top: none; }
   .columns article, .columns article + article { padding: 26px 0; border-left: none; border-top: 1px solid var(--rule); }
   .columns article:first-child { border-top: 1px solid var(--ink); }

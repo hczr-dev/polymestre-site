@@ -33,7 +33,7 @@ const DPR_HI = Math.min(devicePixelRatio, small ? 1.5 : 2);
 // arrêt sont le même rendu, sans saut entre les deux ; seule une machine trop lente passe, en
 // mouvement, par une image plus petite agrandie à l'écran (voir fast).
 let dprNow = DPR_HI;
-let dprFast = Math.min(devicePixelRatio, small ? 1 : 1.35);
+let dprFast = Math.min(devicePixelRatio, small ? 1 : 1.2);
 // Le téléphone part léger ; s'il tient le rythme pendant le vol, l'image passe en plus fine à l'arrêt.
 const DPR_TOP = Math.min(devicePixelRatio, 2.25);
 let canRise = small && DPR_TOP > DPR_HI, fineFrames = 0;
@@ -595,7 +595,7 @@ const AO_SITE = `
 const BAR_PX = [0.9, 2.2];
 class Module {
   // keep : ses pièces gardent leur largeur à toute distance.
-  constructor(keep = false) { this.body = []; this.glass = []; this.keep = keep; }
+  constructor(keep = false) { this.body = []; this.bars = []; this.glass = []; this.keep = keep; this.barW = 0; }
   paint(g, color, kind, slim = null) {
     const geo = g.index ? g.toNonIndexed() : g, n = geo.attributes.position.count, c = lin(color);
     const col = new Float32Array(n * 3), k = new Float32Array(n).fill(kind);
@@ -607,7 +607,8 @@ class Module {
     if (slim) for (let i = 0; i < n; i++) bar.set(slim, i * 3);
     geo.setAttribute("aBar", new THREE.BufferAttribute(bar, 3));
     for (const name of Object.keys(geo.attributes)) if (!["position", "normal", "color", "aKind", "aBar"].includes(name)) geo.deleteAttribute(name);
-    this.body.push(geo);
+    // Les barres fines à part : de loin, réduites à rien par le shader, on ne les dessine plus du tout.
+    if (slim) { this.bars.push(geo); this.barW = Math.max(this.barW, slim[1]); } else this.body.push(geo);
     return this;
   }
   box(x0, y0, z0, x1, y1, z1, color, kind = PLAIN, tilt = 0) {
@@ -660,9 +661,11 @@ class Module {
         g.setAttribute(name, new THREE.BufferAttribute(out, w));
       }
       g.scale(M, M, M);
-      return g;
+      // Indexée : chaque sommet partagé n'est calculé qu'une fois (jusqu'à trois fois moins de travail
+      // pour la carte graphique), sans rien changer à l'image.
+      return mergeVertices(g, 1e-6);
     };
-    return { body: merge(this.body), glass: merge(this.glass) };
+    return { body: merge(this.body), bars: merge(this.bars), barW: this.barW, glass: merge(this.glass) };
   }
 }
 const ALU = "#a9adb2", JOINT = "#26282b", TILE_C = "#cdbfa6", NAVY = "#1d3760", WHITE = "#e4e3de", GREY_R = "#9aa7aa", TAUPE = "#8f867a", BLACK = "#101114";
@@ -1179,7 +1182,7 @@ function surface(m, color, kind, build) {
   m.paint(g, color, kind);
 }
 function bodyOf(m) {
-  const geo = mergeGeometries(m.body);
+  const geo = mergeVertices(mergeGeometries(m.body), 1e-6);
   geo.scale(M, M, M);
   const o = new THREE.Mesh(geo, facadeMat.clone());
   o.material.onBeforeCompile = facadeMat.onBeforeCompile;
@@ -1643,6 +1646,16 @@ rolexGlassMat.onBeforeCompile = (shader) => {
 };
 const FASCIA = 0.05, SLAB = 0.12, RECESS = 0.04;   // la coupe du Rolex, sous le toit (unités)
 const facadeGroup = new THREE.Group();
+// Les barres fines (montants, cadres) de chaque îlot : invisibles quand leur largeur à l'écran tombe sous le
+// seuil où le shader les a déjà ramenées à zéro (voir BAR_PX). Même image, beaucoup moins de triangles.
+const facadeBars = [], barCenter = new THREE.Vector3();
+function cullBars() {
+  for (const m of facadeBars) {
+    barCenter.copy(m.boundingSphere.center).applyMatrix4(m.matrixWorld);
+    const d = Math.max(1e-3, camera.position.distanceTo(barCenter) - m.boundingSphere.radius * campus.scale.x);
+    m.visible = (pxPerUnit.value / d / UNIT) * m.userData.barW > BAR_PX[0] * 0.95;
+  }
+}
 facadeGroup.visible = false;
 const rolexParts = new THREE.Group();
 const facadesReady = groundGate.then(() => Promise.all([loadBin(`${SET}walls.bin`, Float32Array), loadBin("geo/rolex.bin", Float32Array), loadBin("geo/canopies.bin", Float32Array)])).then(async ([a, rolex, roofs]) => {
@@ -1851,18 +1864,21 @@ const facadesReady = groundGate.then(() => Promise.all([loadBin(`${SET}walls.bin
   for (const [key, { kit, matrices, colors }] of lists) {
     const kitName = key.split(":")[0];
     const n = matrices.length;
-    const add = (geo, mat, cast) => {
+    const add = (geo, mat, cast, barW = 0) => {
       if (!geo) return;
       const mesh = new THREE.InstancedMesh(geo, mat, n);
       mesh.name = kitName;
+      mesh.renderOrder = -1;                             // avant le mur du maillage qu'elle cache : ses pixels cachés sont sautés
       matrices.forEach((m, k) => mesh.setMatrixAt(k, m));
       if (mat === facadeMat) colors.forEach((c, k) => mesh.setColorAt(k, tint.set(c)));
       mesh.castShadow = cast && !small; mesh.receiveShadow = !small && mat === facadeMat;   // le verre n'en a pas besoin
       mesh.computeBoundingSphere();
+      if (barW) { mesh.userData.barW = barW; facadeBars.push(mesh); }
       facadeGroup.add(mesh);
       triangles += n * geo.attributes.position.count / 3;
     };
     add(kit.body, facadeMat, true);
+    add(kit.bars, facadeMat, false, kit.barW);
     add(kit.glass, kit === kits.rts || kit === kits.slab ? rtsGlassMat : kit === kits.wood ? artGlassMat : kit === kits.medc ? medGlassMat : kit.lit ? qnGlassMat : glassMat, false);
   }
   facadeGroup.visible = true;
@@ -2077,17 +2093,18 @@ const D = (x, y, d, ry, rx, screen, on = 1) => ({ x, y, d, ry, rx, screen, on })
 const OFF_PHONE = D(0.45, -1.6, 5.4, -0.3, 0.2, null, 0);
 // Une section, un lieu : le parcours fait visiter le campus en même temps que l'app. orbit : le tour
 // lent (degrés) que fait la caméra autour du lieu pendant la lecture.
+// Chaque lieu a son plan : la caméra va de pos à to (et son regard de look à lookTo) pendant la lecture.
 const STOPS = {
-  hero: { pos: [-40, 17, 46], look: [8, 3, -8], orbit: 10, shift: 0.1, phone: D(0.66, -0.1, 5.8, -0.5, 0.06, "iphone-today") },
-  today: { pos: [3, 5.5, 21], look: [1, 3.2, 40], orbit: 7, shift: -0.14, phone: OFF_PHONE },
-  import: { pos: [63, 11, 15], look: [42, 6.4, -2], orbit: 28, shift: 0.14, phone: OFF_PHONE },
-  etude: { pos: [-15, 7, -15], look: [3, 1.4, 1], orbit: 24, shift: -0.14, phone: OFF_PHONE },
-  hours: { pos: [25, 8, 13], look: [8, 2.6, 28], orbit: 22, shift: 0.14, phone: OFF_PHONE },
-  groups: { pos: [-37, 7, -7], look: [-21, 1.4, 7], orbit: 34, shift: -0.14, phone: OFF_PHONE },
-  everywhere: { pos: [42, 12, 30], look: [30, 3.4, 1], orbit: 30, shift: 0.14, phone: D(-0.62, -0.08, 5.6, 0.48, 0.06, "iphone-today") },
-  plan: { pos: [0.01, 62, 9], look: [2.6, 0, -1], orbit: 0, shift: 0, phone: OFF_PHONE },
+  hero: { pos: [-46, 19, 52], look: [8, 3, -8], to: [-37, 15.5, 41], lookTo: [8, 2.6, -8], shift: 0.1, phone: D(0.66, -0.1, 5.8, -0.5, 0.06, "iphone-today") },
+  today: { pos: [1.6, 7, 68], look: [1, 2.4, 39], to: [1.2, 5, 53], lookTo: [1, 2.2, 38], shift: 0.21, phone: OFF_PHONE },
+  import: { pos: [61, 5, 9], look: [42, 6, -2], to: [57, 8.5, -15], lookTo: [42, 7.6, -2], shift: -0.21, phone: OFF_PHONE },
+  etude: { pos: [-25, 6.5, -15], look: [2, 1.2, 2], to: [-15, 4.6, -22], lookTo: [6, 1.2, 5], shift: 0.21, phone: OFF_PHONE },
+  hours: { pos: [27, 8, 13], look: [8, 2.4, 28], to: [26, 9, 33], lookTo: [8, 2.4, 28], shift: -0.21, phone: OFF_PHONE },
+  groups: { pos: [-39, 12, -6], look: [-21, 1.2, 7], to: [-33, 6, -1], lookTo: [-21, 1.4, 7], shift: 0.21, phone: OFF_PHONE },
+  everywhere: { pos: [43, 8, 22], look: [30, 3, 1], to: [48, 13, 32], lookTo: [30, 3, 1], shift: -0.21, phone: OFF_PHONE },
+  plan: { pos: [0.01, 62, 9], look: [2.6, 0, -1], to: [0.01, 58, 9], lookTo: [2.6, 0, -1], shift: 0, phone: OFF_PHONE },
 };
-for (const s of Object.values(STOPS)) { s.pos = flipZ(s.pos); s.look = flipZ(s.look); }
+for (const s of Object.values(STOPS)) { s.pos = flipZ(s.pos); s.look = flipZ(s.look); s.to = flipZ(s.to); s.lookTo = flipZ(s.lookTo); }
 const INSIDE = new Set(["hero", "today"]);            // en portrait, ces vues ne reculent pas
 const sections = [...document.querySelectorAll("[data-cam]")];
 let centers = [];
@@ -2111,19 +2128,20 @@ function camRoute() {
   const tall = portrait();
   if (routeNow && routeFor === tall) return routeNow;
   const names = sections.map((s) => s.dataset.cam), P = [], L = [];
-  const pose = (stop, name, turn) => {
-    const look = new THREE.Vector3(...stop.look), arm = new THREE.Vector3(...stop.pos).sub(look).applyAxisAngle(new THREE.Vector3(0, 1, 0), THREE.MathUtils.degToRad(turn));
+  const pose = (pos, look, name) => {
+    const at = new THREE.Vector3(...look), arm = new THREE.Vector3(...pos).sub(at);
     if (tall && !INSIDE.has(name)) arm.multiplyScalar(1.5);
-    return arm.add(look);
+    return arm.add(at);
   };
   names.forEach((name, n) => {
     const s = STOPS[name], next = STOPS[names[n + 1]];
-    P.push(pose(s, name, -s.orbit / 2), pose(s, name, s.orbit / 2));
-    L.push(new THREE.Vector3(...s.look), new THREE.Vector3(...s.look));
+    P.push(pose(s.pos, s.look, name), pose(s.to, s.lookTo, name));
+    L.push(new THREE.Vector3(...s.look), new THREE.Vector3(...s.lookTo));
     if (next) {
-      const from = pose(s, name, s.orbit / 2), to = pose(next, names[n + 1], -next.orbit / 2), span = from.distanceTo(to);
-      P.push(from.clone().lerp(to, 0.5).setY(Math.max(from.y, to.y) + Math.min(26, span * 0.32)));
-      L.push(new THREE.Vector3(...s.look).lerp(new THREE.Vector3(...next.look), 0.5));
+      // Entre deux lieux : on monte, on vire, on redescend ; le regard glisse d'un sujet à l'autre.
+      const from = pose(s.to, s.lookTo, name), to = pose(next.pos, next.look, names[n + 1]), span = from.distanceTo(to);
+      P.push(from.clone().lerp(to, 0.5).setY(Math.max(from.y, to.y) + Math.min(22, span * 0.28)));
+      L.push(new THREE.Vector3(...s.lookTo).lerp(new THREE.Vector3(...next.look), 0.5));
     }
   });
   routeFor = tall;
@@ -2143,8 +2161,8 @@ function scrollTarget() {
   // Un seul trajet continu : pendant une section la caméra tourne lentement autour du lieu, entre deux
   // elle prend de la hauteur et glisse vers le suivant. Trois repères par section (entrée, sortie, milieu du vol).
   const N = sections.length, near = (n) => centers[Math.min(N - 1, Math.max(0, n))];
-  const startOf = (n) => centers[n] - 0.34 * (n ? centers[n] - near(n - 1) : innerHeight);
-  const endOf = (n) => centers[n] + 0.34 * (n < N - 1 ? near(n + 1) - centers[n] : innerHeight);
+  const startOf = (n) => centers[n] - 0.42 * (n ? centers[n] - near(n - 1) : innerHeight);
+  const endOf = (n) => centers[n] + 0.3 * (n < N - 1 ? near(n + 1) - centers[n] : innerHeight);
   let key;
   if (mid <= startOf(i) && i === 0) key = 0;
   else if (mid <= endOf(i)) key = 3 * i + Math.min(1, Math.max(0, (mid - startOf(i)) / (endOf(i) - startOf(i))));
@@ -2356,6 +2374,8 @@ function frame() {
   // Un mouvement : l'image réduite. Un arrêt qui dure : la pleine définition, jamais au milieu d'une
   // lecture par à-coups.
   const sharp = !moving && wantSharp;
+  camera.updateMatrixWorld();
+  cullBars();
   renderer.autoClear = true;
   if (sharp) { renderer.render(scene, camera); sharpDone = true; wantSharp = false; stale = false; }
   else if (useFast) fast.render();                      // jusqu'à l'image nette : le même rendu lissé, pas de saut
@@ -2378,9 +2398,10 @@ function frame() {
       if (paceMs > 19 && ++slowFrames > 10) {   // une machine qui peine passe vite en image réduite
         slowFrames = 0; paceMs = 16;
         if (fast && (!useFast || dprFast > 0.7)) {
-          dprFast = useFast ? Math.max(0.7, dprFast - 0.2) : Math.max(0.7, Math.min(1.25, dprNow * 0.65));
+          // La première fois, l'image réduite déjà allouée (aucune réallocation, donc aucun à-coup) ;
+          // ensuite seulement, un cran plus bas.
+          if (useFast) { dprFast = Math.max(0.7, dprFast - 0.25); fast.setPixelRatio(dprFast); }
           useFast = true;
-          fast.setPixelRatio(dprFast);
         } else if (!fast && dprNow > 1) {
           canRise = false;
           dprNow = Math.max(1, dprNow - 0.25);
@@ -2468,6 +2489,7 @@ function preload() {
   eyeOver.position.set(0, 260, 0.01); eyeOver.lookAt(0, 0, 0); eyeOver.updateMatrixWorld();
   renderer.render(scene, eyeOver);
   renderer.render(scene, camera);
+  fast?.render();                                      // l'image réduite allouée d'avance : la basculer ne coûte rien
   const shown = phone.visible;                         // l'iPhone aussi, sinon son écran se charge à l'arrivée
   phone.visible = true; renderer.autoClear = false; renderer.render(deviceScene, devCam); renderer.autoClear = true; phone.visible = shown;
   campus.scale.y = keep; facadeGroup.visible = false;
