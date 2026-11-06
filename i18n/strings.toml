@@ -23,8 +23,8 @@ en = "en_GB"
 
 # Le logo en haut à gauche ramène au début de la page dans la même langue.
 [page.home]
-fr = "./"
-en = "en.html"
+fr = "/"
+en = "/en"
 
 [page.title]
 fr = "Polymestre — tes cours EPFL, semaine par semaine"
@@ -52,8 +52,8 @@ fr = "en"
 en = "fr"
 
 [switch.href]
-fr = "en.html"
-en = "./"
+fr = "/en"
+en = "/"
 
 # ------------------------------------------------------------------------------------------
 # Intro (le vol au-dessus du Léman)
@@ -177,8 +177,8 @@ fr = "Sur iPhone, Mac et Windows."
 en = "On iPhone, Mac and Windows."
 
 [everywhere.text]
-fr = '''L'app synchronise tes données de manière sécurisée. Ni pub, ni traceur. <a href="privacy.html">Confidentialité</a>'''
-en = '''The app syncs your data securely. No ads, no trackers. <a href="privacy.html#en">Privacy</a>'''
+fr = '''L'app synchronise tes données de manière sécurisée. Ni pub, ni traceur. <a href="/privacy">Confidentialité</a>'''
+en = '''The app syncs your data securely. No ads, no trackers. <a href="/privacy#en">Privacy</a>'''
 
 # ------------------------------------------------------------------------------------------
 # Téléchargements
@@ -252,16 +252,16 @@ fr = "Confidentialité"
 en = "Privacy"
 
 [footer.privacy_href]
-fr = "privacy.html"
-en = "privacy.html#en"
+fr = "/privacy"
+en = "/privacy#en"
 
 [footer.terms]
 fr = "Conditions"
 en = "Terms"
 
 [footer.terms_href]
-fr = "terms.html"
-en = "terms.html#en"
+fr = "/terms"
+en = "/terms#en"
 
 [footer.source]
 fr = "Open source (GitHub)"

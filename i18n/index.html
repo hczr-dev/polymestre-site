@@ -12,7 +12,7 @@
 <meta property="og:locale" content="{{page.locale}}">
 <meta property="og:image" content="https://polymestre.ch/shots/windows-today.webp">
 <link rel="alternate" hreflang="fr" href="https://polymestre.ch/">
-<link rel="alternate" hreflang="en" href="https://polymestre.ch/en.html">
+<link rel="alternate" hreflang="en" href="https://polymestre.ch/en">
 <link rel="alternate" hreflang="x-default" href="https://polymestre.ch/">
 <script>
 // La langue : un navigateur qui ne parle pas français arrive sur la version anglaise, sauf si la
@@ -27,7 +27,7 @@
     var english = saved ? saved === "en"
       : !/bot|crawl|spider|slurp|preview/i.test(navigator.userAgent) && !langs.some(function (l) { return /^fr\b/i.test(l); });
     if (document.documentElement.lang === "fr" && english) {
-      location.replace("en.html" + location.hash);
+      location.replace("/en" + location.hash);
     }
   } catch (_) {}
 })();

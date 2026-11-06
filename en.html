@@ -13,7 +13,7 @@
 <meta property="og:locale" content="en_GB">
 <meta property="og:image" content="https://polymestre.ch/shots/windows-today.webp">
 <link rel="alternate" hreflang="fr" href="https://polymestre.ch/">
-<link rel="alternate" hreflang="en" href="https://polymestre.ch/en.html">
+<link rel="alternate" hreflang="en" href="https://polymestre.ch/en">
 <link rel="alternate" hreflang="x-default" href="https://polymestre.ch/">
 <script>
 // La langue : un navigateur qui ne parle pas français arrive sur la version anglaise, sauf si la
@@ -28,7 +28,7 @@
     var english = saved ? saved === "en"
       : !/bot|crawl|spider|slurp|preview/i.test(navigator.userAgent) && !langs.some(function (l) { return /^fr\b/i.test(l); });
     if (document.documentElement.lang === "fr" && english) {
-      location.replace("en.html" + location.hash);
+      location.replace("/en" + location.hash);
     }
   } catch (_) {}
 })();
@@ -50,9 +50,9 @@
 <p class="geo-credit">Imagery © swisstopo · Sentinel-2 cloudless 2020, EOX · buildings © swisstopo</p>
 
 <header class="top">
-  <a class="mark" href="en.html"><img src="logo-120.png" alt="" width="30" height="30">Polymestre</a>
+  <a class="mark" href="/en"><img src="logo-120.png" alt="" width="30" height="30">Polymestre</a>
   <nav>
-    <a href="./" hreflang="fr" lang="fr" data-lang="fr" title="Version française">FR</a>
+    <a href="/" hreflang="fr" lang="fr" data-lang="fr" title="Version française">FR</a>
     <a href="https://github.com/hczr-dev/studytrack">GitHub</a>
     <a href="#telecharger">Download</a>
   </nav>
@@ -122,7 +122,7 @@
   <section class="bay right" data-cam="everywhere" id="partout">
     <div class="panel">
       <h2>On iPhone, Mac and Windows.</h2>
-      <p>The app syncs your data securely. No ads, no trackers. <a href="privacy.html#en">Privacy</a></p>
+      <p>The app syncs your data securely. No ads, no trackers. <a href="/privacy#en">Privacy</a></p>
     </div>
   </section>
 
@@ -157,8 +157,8 @@
 <footer class="foot">
   <span>Polymestre is not affiliated with EPFL.</span>
   <a href="mailto:studytrack@hczr.ch">studytrack@hczr.ch</a>
-  <a href="privacy.html#en">Privacy</a>
-  <a href="terms.html#en">Terms</a>
+  <a href="/privacy#en">Privacy</a>
+  <a href="/terms#en">Terms</a>
   <a href="https://github.com/hczr-dev/studytrack">Open source (GitHub)</a>
   <small class="credits">Aerial imagery, buildings (swissBUILDINGS3D) and 3D vegetation © swisstopo · Sentinel-2 cloudless 2020 by EOX IT Services (contains modified Copernicus Sentinel data), CC BY-NC-SA 4.0 · elevation Terrain Tiles (Mapzen, AWS Open Data). The Rolex Learning Center is a work by SANAA; the RTS building (OFFICE Kersten Geers David Van Severen), missing from the data, is reconstructed from the plans and sections published by its architects, and the façades are modelled from photos of the campus. App screenshots use sample data.</small>
 </footer>
