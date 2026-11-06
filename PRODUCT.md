@@ -39,7 +39,7 @@ Built around EPFL's real sources and rhythm (weekly series, flipped classes, ECT
 
 ## Brand Commitments
 
-Name « StudyTrack ». App icon `icon.png` / `logo-120.png`. Voice: direct, short, tutoiement, no marketing superlatives in the apps. Contact studytrack@hczr.ch.
+Name « StudyTrack ». App icon `icon.png` / `logo-120.png`. Voice: direct, short, tutoiement, no marketing superlatives in the apps. Contact contact@polymestre.ch.
 
 ## Evidence on Hand
 

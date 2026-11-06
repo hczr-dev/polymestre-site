@@ -236,8 +236,8 @@ fr = '''Lance l'installeur. Si Windows affiche l'écran bleu SmartScreen, clique
 en = '''Run the installer. If Windows shows the blue SmartScreen screen, click “More info”, then “Run anyway”. MSI installer: <a id="dl-msi" href="https://github.com/hczr-dev/polymestre-site/releases/latest">download</a>.'''
 
 [download.help]
-fr = '''Un souci ? Écris-nous depuis l'app (Réglages puis « Signaler un problème ») ou à <a href="mailto:studytrack@hczr.ch">studytrack@hczr.ch</a>.'''
-en = '''Something wrong? Write to us from the app (Settings then “Report a problem”) or at <a href="mailto:studytrack@hczr.ch">studytrack@hczr.ch</a>.'''
+fr = '''Un souci ? Écris-nous depuis l'app (Réglages puis « Signaler un problème ») ou à <a href="mailto:contact@polymestre.ch">contact@polymestre.ch</a>.'''
+en = '''Something wrong? Write to us from the app (Settings then “Report a problem”) or at <a href="mailto:contact@polymestre.ch">contact@polymestre.ch</a>.'''
 
 # ------------------------------------------------------------------------------------------
 # Pied de page
