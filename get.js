@@ -1,7 +1,7 @@
 // Les téléchargements : le bon bouton en avant selon l'appareil, et les vrais fichiers de la
 // dernière release (Mac et Windows dans la même), versions comprises.
 (function () {
-  var RELEASE_API = "https://api.github.com/repos/hczr-dev/studytrack-site/releases/latest";
+  var RELEASE_API = "https://api.github.com/repos/hczr-dev/polymestre-site/releases/latest";
 
   function set(id, prop, value) {
     var el = document.getElementById(id);

@@ -105,8 +105,8 @@ fr = "10 et 11"
 en = "10 and 11"
 
 [hero.fine]
-fr = '''Gratuit et sans pub · <a href="https://github.com/hczr-dev/studytrack">open source sur GitHub</a> · made with ❤️ by hczr'''
-en = '''Free and ad-free · <a href="https://github.com/hczr-dev/studytrack">open source on GitHub</a> · made with ❤️ by hczr'''
+fr = '''Gratuit et sans pub · <a href="https://github.com/hczr-dev/polymestre">open source sur GitHub</a> · made with ❤️ by hczr'''
+en = '''Free and ad-free · <a href="https://github.com/hczr-dev/polymestre">open source on GitHub</a> · made with ❤️ by hczr'''
 
 # ------------------------------------------------------------------------------------------
 # Sections
@@ -232,8 +232,8 @@ en = "Download for Windows"
 
 # Le lien id="dl-msi" reçoit le vrai fichier .msi par get.js : garde l'id.
 [download.win_how]
-fr = '''Lance l'installeur. Si Windows affiche l'écran bleu SmartScreen, clique sur « Informations complémentaires », puis « Exécuter quand même ». Installeur MSI : <a id="dl-msi" href="https://github.com/hczr-dev/studytrack-site/releases/latest">télécharger</a>.'''
-en = '''Run the installer. If Windows shows the blue SmartScreen screen, click “More info”, then “Run anyway”. MSI installer: <a id="dl-msi" href="https://github.com/hczr-dev/studytrack-site/releases/latest">download</a>.'''
+fr = '''Lance l'installeur. Si Windows affiche l'écran bleu SmartScreen, clique sur « Informations complémentaires », puis « Exécuter quand même ». Installeur MSI : <a id="dl-msi" href="https://github.com/hczr-dev/polymestre-site/releases/latest">télécharger</a>.'''
+en = '''Run the installer. If Windows shows the blue SmartScreen screen, click “More info”, then “Run anyway”. MSI installer: <a id="dl-msi" href="https://github.com/hczr-dev/polymestre-site/releases/latest">download</a>.'''
 
 [download.help]
 fr = '''Un souci ? Écris-nous depuis l'app (Réglages puis « Signaler un problème ») ou à <a href="mailto:studytrack@hczr.ch">studytrack@hczr.ch</a>.'''
