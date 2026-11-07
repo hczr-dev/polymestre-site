@@ -35,7 +35,6 @@ Built around EPFL's real sources and rhythm (weekly series, flipped classes, ECT
 - Downloads live on the GitHub release of the site repo (`releases/latest`, one release holding Mac and Windows files). `mac/latest.json` must stay at that path and format.
 - Language: French first; a short English summary is kept. `privacy.html` and `terms.html` must keep working (linked from the apps and the App Store).
 - Not affiliated with EPFL; must say so.
-- Open: the public TestFlight URL (to be provided by Hugo).
 
 ## Brand Commitments
 
